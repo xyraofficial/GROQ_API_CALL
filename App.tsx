@@ -194,7 +194,7 @@ const App = () => {
           }
       } catch (e: any) {
           setTermuxConfig({ ...newConfig, isConnected: false });
-          alert(`Failed to connect: ${e.message}\n\nPlease update your Python script to V5 (Localhost.run). Serveo is blocking the connection.`);
+          alert(`Failed to connect: ${e.message}\n\nPlease update your Python script to V6 (Support lhr.life).`);
       } finally {
           setIsTermuxRunning(false);
       }
@@ -467,7 +467,7 @@ const App = () => {
       <div className="p-4 h-full overflow-y-auto">
           <h1 className="text-2xl font-bold mb-2">Termux Connection</h1>
           <p className="text-gray-500 mb-6 text-sm">
-              Connect Termux with SSH. Now supports Vercel (CORS Fixed V5).
+              Connect Termux with SSH. Now supports Vercel (CORS Fixed V6).
           </p>
 
           <IOSCard className="space-y-4 mb-6">
@@ -486,7 +486,7 @@ const App = () => {
               <div className="space-y-4">
                   <IOSInput 
                       label="Public SSH URL (from script)"
-                      placeholder="https://xxxx.localhost.run"
+                      placeholder="https://xxxx.lhr.life"
                       value={termuxConfig.url}
                       onChange={(e) => setTermuxConfig({...termuxConfig, url: e.target.value})}
                   />
@@ -505,15 +505,15 @@ const App = () => {
 
           <IOSCard>
               <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <LinkIcon size={16} /> Connection Steps (V5)
+                  <LinkIcon size={16} /> Connection Steps (V6)
               </h3>
               <ol className="text-sm text-gray-600 space-y-2 list-decimal list-inside">
                   <li>In Termux: <code className="bg-gray-100 px-1 rounded">pkg install python openssh</code></li>
                   <li>Install Flask: <code className="bg-gray-100 px-1 rounded">pip install flask</code></li>
                   <li>
-                    <b>CRITICAL:</b> Use the new V5 Script below. It uses <b>localhost.run</b> instead of Serveo.
+                    <b>CRITICAL:</b> Update the script to V6 below.
                   </li>
-                  <li>Run the script. Copy the URL ending in <b>.localhost.run</b>.</li>
+                  <li>Run script. Copy URL ending in <b>.lhr.life</b> or <b>.localhost.run</b>.</li>
                   <li>Default Token is <b>12345</b>.</li>
               </ol>
           </IOSCard>
@@ -639,7 +639,7 @@ const App = () => {
       </div>
       
        <div className="mt-8 text-center">
-         <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Version 1.5.0 (Localhost.run)</p>
+         <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Version 1.6.0 (LHR.life Support)</p>
        </div>
     </div>
   );
