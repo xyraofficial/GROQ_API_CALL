@@ -187,14 +187,14 @@ const App = () => {
                   const finalConfig = { ...newConfig, isConnected: true };
                   setTermuxConfig(finalConfig);
                   localStorage.setItem('termux_config', JSON.stringify(finalConfig));
-                  alert('Successfully connected to Termux! (CORS Checked)');
+                  alert('Termux Connected Successfully!');
               }
           } else {
-              throw new Error('Server not ready');
+              throw new Error('Server returned invalid status');
           }
       } catch (e: any) {
           setTermuxConfig({ ...newConfig, isConnected: false });
-          alert(`Failed to connect: ${e.message}. \n\nMake sure you are using the NEW Python script with CORS fix.`);
+          alert(`Failed to connect: ${e.message}\n\nMake sure to use the UPDATED Python script (V4) which fixes the "Failed to fetch" CORS error.`);
       } finally {
           setIsTermuxRunning(false);
       }
@@ -467,7 +467,7 @@ const App = () => {
       <div className="p-4 h-full overflow-y-auto">
           <h1 className="text-2xl font-bold mb-2">Termux Connection</h1>
           <p className="text-gray-500 mb-6 text-sm">
-              Connect Termux with SSH. Now supports Vercel (CORS Fixed).
+              Connect Termux with SSH. Now supports Vercel (CORS Fixed V4).
           </p>
 
           <IOSCard className="space-y-4 mb-6">
@@ -505,16 +505,16 @@ const App = () => {
 
           <IOSCard>
               <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <LinkIcon size={16} /> Connection Steps (CORS Fixed)
+                  <LinkIcon size={16} /> Connection Steps (Fixed V4)
               </h3>
               <ol className="text-sm text-gray-600 space-y-2 list-decimal list-inside">
                   <li>In Termux: <code className="bg-gray-100 px-1 rounded">pkg install python openssh</code></li>
                   <li>Install Flask: <code className="bg-gray-100 px-1 rounded">pip install flask</code></li>
                   <li>
-                    <b>CRITICAL:</b> Delete old script. Copy-paste the NEW code below.
+                    <b>CRITICAL:</b> Delete old script. Create a new file with the Code below.
                   </li>
-                  <li>Run it. It now includes <b>Access-Control-Allow-Origin</b> headers.</li>
-                  <li>The Default Token is now <b>12345</b> (no need to copy random tokens).</li>
+                  <li>Run it. It now handles <b>OPTIONS</b> requests correctly.</li>
+                  <li>The Default Token is <b>12345</b>.</li>
               </ol>
           </IOSCard>
       </div>
@@ -639,7 +639,7 @@ const App = () => {
       </div>
       
        <div className="mt-8 text-center">
-         <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Version 1.3.0 (CORS FIX)</p>
+         <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Version 1.4.0 (Fix Fetch Error)</p>
        </div>
     </div>
   );
