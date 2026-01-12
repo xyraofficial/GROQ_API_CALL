@@ -2,77 +2,51 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
-    <title>Groq Agent Pro</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, interactive-widget=resizes-content" />
+    <title>Groq Engineer</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script>
       tailwind.config = {
         theme: {
           extend: {
             fontFamily: {
-              sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
-              mono: ['SF Mono', 'Menlo', 'Monaco', 'Courier New', 'monospace'],
+              sans: ['Inter', 'sans-serif'],
+              mono: ['JetBrains Mono', 'monospace'],
             },
             colors: {
-              ios: {
-                bg: '#F2F2F7',
-                card: '#FFFFFF',
-                blue: '#007AFF',
-              }
-            },
-            boxShadow: {
-              'ios': '0 8px 30px rgba(0,0,0,0.04)',
-              'glow': '0 0 20px rgba(0,122,255,0.15)'
-            },
-            animation: {
-              'fade-in-up': 'fadeInUp 0.5s ease-out forwards',
-              'progress-indeterminate': 'progress 1.5s infinite linear',
-            },
-            keyframes: {
-              fadeInUp: {
-                '0%': { opacity: '0', transform: 'translateY(10px)' },
-                '100%': { opacity: '1', transform: 'translateY(0)' },
-              },
-              progress: {
-                '0%': { transform: 'translateX(-100%)' },
-                '100%': { transform: 'translateX(100%)' },
-              }
+              primary: '#2563eb', // Blue 600
+              surface: '#f3f4f6', // Gray 100
             }
           }
         }
       }
     </script>
     <style>
-      body {
-        background-color: #F2F2F7;
-        -webkit-font-smoothing: antialiased;
-        overscroll-behavior: none;
+      html, body {
+        height: 100%;
+        overflow: hidden; /* Prevent body scroll, handle inside App */
+        background-color: #ffffff;
+        -webkit-tap-highlight-color: transparent;
       }
-      .no-scrollbar::-webkit-scrollbar { display: none; }
-      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
       
-      /* Markdown Enhancements */
+      /* Markdown Cleanup */
+      .markdown-body { font-size: 15px; line-height: 1.6; }
+      .markdown-body p { margin-bottom: 0.75em; }
+      .markdown-body pre { 
+        background: #18181b; 
+        padding: 12px; 
+        border-radius: 8px; 
+        overflow-x: auto; 
+        margin: 8px 0;
+        border: 1px solid #27272a;
+      }
       .markdown-body code {
-        background-color: rgba(0,0,0,0.05);
-        color: #e83e8c;
-        padding: 2px 4px;
-        border-radius: 4px;
-        font-family: 'SF Mono', monospace;
+        font-family: 'JetBrains Mono', monospace;
         font-size: 0.9em;
       }
-      .markdown-body pre {
-        background: #1e1e1e;
-        color: #d4d4d4;
-        padding: 12px;
-        border-radius: 12px;
-        overflow-x: auto;
-      }
-      .markdown-body pre code {
-        color: inherit;
-        background: transparent;
-        padding: 0;
-      }
+      .markdown-body ul { list-style-type: disc; padding-left: 1.5em; margin-bottom: 0.75em; }
+      .markdown-body ol { list-style-type: decimal; padding-left: 1.5em; margin-bottom: 0.75em; }
     </style>
   <script type="importmap">
 {

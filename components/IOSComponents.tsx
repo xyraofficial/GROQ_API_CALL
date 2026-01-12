@@ -8,7 +8,7 @@ export const IOSCard = ({ children, className = '' }: { children: React.ReactNod
 );
 
 // --- Button ---
-interface IOSButtonProps extends React.ComponentProps<'button'> {
+interface IOSButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
   fullWidth?: boolean;
 }
@@ -40,7 +40,7 @@ export const IOSButton = ({
 };
 
 // --- Input ---
-interface IOSInputProps extends React.ComponentProps<'input'> {
+interface IOSInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
 }
 
