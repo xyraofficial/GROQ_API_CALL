@@ -199,7 +199,7 @@ const App = () => {
           }
       } catch (e: any) {
           setTermuxConfig({ ...newConfig, isConnected: false });
-          alert(`Failed to connect: ${e.message}\n\nTroubleshooting:\n1. Check if Python script is running.\n2. Ensure you copied the FULL https URL.\n3. Try restarting the Python script.`);
+          alert(`Failed to connect: ${e.message}\n\nTroubleshooting:\n1. Update Python script to V8.\n2. Ensure you copied the FULL https URL.\n3. Try restarting the Python script.`);
       } finally {
           setIsTermuxRunning(false);
       }
@@ -473,7 +473,7 @@ const App = () => {
       <div className="p-4 h-full overflow-y-auto">
           <h1 className="text-2xl font-bold mb-2">Termux Connection</h1>
           <p className="text-gray-500 mb-6 text-sm">
-              Connect Termux with SSH. Now supports Vercel (CORS Fixed V7).
+              Connect Termux with SSH. Now supports Vercel (CORS Fixed V8).
           </p>
 
           <IOSCard className="space-y-4 mb-6">
@@ -511,13 +511,13 @@ const App = () => {
 
           <IOSCard>
               <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <LinkIcon size={16} /> Connection Steps (V7)
+                  <LinkIcon size={16} /> Connection Steps (V8)
               </h3>
               <ol className="text-sm text-gray-600 space-y-2 list-decimal list-inside">
                   <li>In Termux: <code className="bg-gray-100 px-1 rounded">pkg install python openssh</code></li>
                   <li>Install Flask: <code className="bg-gray-100 px-1 rounded">pip install flask</code></li>
                   <li>
-                    <b>CRITICAL:</b> Update the script to V7 below.
+                    <b>CRITICAL:</b> Update the script to V8 below.
                   </li>
                   <li>Run script. Copy URL ending in <b>.lhr.life</b>.</li>
                   <li>Default Token is <b>12345</b>.</li>
@@ -645,7 +645,7 @@ const App = () => {
       </div>
       
        <div className="mt-8 text-center">
-         <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Version 1.7.0 (Force IPv4)</p>
+         <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Version 1.8.0 (Fix Duplicate Headers)</p>
        </div>
     </div>
   );
