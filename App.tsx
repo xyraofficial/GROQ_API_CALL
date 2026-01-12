@@ -44,34 +44,38 @@ const formatModelName = (modelId: string) => {
   return modelId;
 };
 
-// --- Termux System Instruction (SMARTER & MARKDOWN SUPPORT) ---
+// --- Termux System Instruction (SMARTER & ACCURATE) ---
 const TERMUX_SYSTEM_PROMPT = `
-You are "Groq-OS", an advanced automated AI System Engineer capable of managing Android/Linux systems via Termux.
+You are "Groq-OS", an elite AI System Engineer for Termux.
 
-**CORE PROTOCOLS:**
+**MANDATORY RULES:**
 
-1.  **DISTINGUISH REQUESTS:**
-    *   **Informational/Questions:** If the user asks "How do I...", "What is...", or "Explain...", answer purely in **Markdown text**. Do NOT generate commands unless explicitly asked to execute them.
-    *   **Action/Execution:** If the user asks "Install...", "Check version...", "Create file...", "Run...", then you MUST generate the command block.
+1.  **NO PLACEHOLDERS:** NEVER output "your_command_here". ALWAYS generate the ACTUAL command needed.
+    *   BAD: <<<CMD: your_command_here >>>
+    *   GOOD: <<<CMD: ls -la >>>
 
-2.  **FORMATTING:**
-    *   Use **Markdown** for all text responses (Bold key terms, use Lists for steps, use Code blocks for examples).
-    *   Keep explanations concise and professional.
+2.  **SMART DELETION:**
+    *   If the user asks to delete a file or folder (e.g., "hapus createdbykztutorial"), ALWAYS use \`rm -rf\` to handle both files and directories without errors.
+    *   If the user's filename is likely a typo or approximation, correct it or use a wildcard if safe.
+    *   Example: User "hapus createdby", you generate: <<<CMD: rm -rf createdby* >>> (if safe) or <<<CMD: rm -rf createdby >>>
 
-3.  **COMMAND GENERATION:**
-    *   To suggest a command to be executed by the UI, wrap it EXACTLY like this:
-    <<<CMD: your_command_here >>>
+3.  **COMMAND FORMAT:**
+    *   Wrap commands EXACTLY in: <<<CMD: actual_command_string >>>
 
-**EXAMPLES:**
+4.  **RESPONSE STYLE:**
+    *   For questions ("How to..."), answer in Markdown text.
+    *   For tasks ("Check git", "Install python"), provide the CMD block immediately.
+    *   Keep it concise. No yapping.
 
-User: "Check git version"
-You: "Checking the installed Git version."
+**SCENARIOS:**
+
+User: "Cek git"
+You: "Checking git version..."
 <<<CMD: git --version >>>
 
-User: "How does ls work?"
-You: "**ls** is a command to list directory contents.
-*   \`ls -a\`: Show hidden files.
-*   \`ls -l\`: Show detailed info."
+User: "Hapus folder tutorial"
+You: "Deleting folder 'tutorial'..."
+<<<CMD: rm -rf tutorial >>>
 `;
 
 const App = () => {
@@ -91,8 +95,7 @@ const App = () => {
   const [activeCmdId, setActiveCmdId] = useState<string | null>(null);
   const [executionStep, setExecutionStep] = useState<string>('');
   const [cmdResults, setCmdResults] = useState<Record<string, { success: boolean, output: string, timestamp: string }>>({});
-  const [expandedLogs, setExpandedLogs] = useState<Record<string, boolean>>({});
-
+  
   // Chat State
   const [messages, setMessages] = useState<Message[]>([
     { role: 'system', content: TERMUX_SYSTEM_PROMPT }
@@ -127,7 +130,7 @@ const App = () => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, activeCmdId, expandedLogs]);
+  }, [messages, activeCmdId, cmdResults]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -226,10 +229,10 @@ const App = () => {
       setActiveCmdId(cmdId);
       
       // Smart Animation Sequence
-      const steps = ['Working...', 'Analyzing...', 'Executing...'];
+      const steps = ['Working...', 'Processing...', 'Executing...'];
       for (const step of steps) {
           setExecutionStep(step);
-          await new Promise(resolve => setTimeout(resolve, 400)); 
+          await new Promise(resolve => setTimeout(resolve, 300)); 
       }
 
       try {
@@ -245,18 +248,12 @@ const App = () => {
           
           const data = await res.json();
           
-          setExecutionStep('Finalizing...');
-          await new Promise(resolve => setTimeout(resolve, 300));
+          setExecutionStep('Fetching Output...');
+          await new Promise(resolve => setTimeout(resolve, 200));
 
           if (res.ok) {
              const output = data.stdout || data.stderr || "Command executed successfully.";
              
-             // --- SMART LOGIC: Auto-open if short output (like version check) ---
-             const isShortOutput = output.length < 250 && output.split('\n').length < 8;
-             if (isShortOutput) {
-                 setExpandedLogs(prev => ({...prev, [cmdId]: true}));
-             }
-
              setCmdResults(prev => ({
                  ...prev,
                  [cmdId]: { 
@@ -288,10 +285,6 @@ const App = () => {
           setActiveCmdId(null);
           setExecutionStep('');
       }
-  };
-
-  const toggleLogs = (cmdId: string) => {
-      setExpandedLogs(prev => ({...prev, [cmdId]: !prev[cmdId]}));
   };
 
   const handleSendMessage = async () => {
@@ -359,7 +352,7 @@ const App = () => {
                   const cmdId = `cmd-${msgIndex}-${i}`;
                   const isRunning = activeCmdId === cmdId;
                   const result = cmdResults[cmdId];
-                  const isLogsOpen = expandedLogs[cmdId];
+                  // No specific 'isLogsOpen' state needed anymore, we show result by default.
 
                   return (
                       <div key={cmdId} className="my-2 rounded-xl overflow-hidden shadow-lg border border-gray-700 bg-gray-900 w-full max-w-full">
@@ -368,11 +361,11 @@ const App = () => {
                           <div className="bg-gray-800 px-3 py-2 flex items-center justify-between border-b border-gray-700">
                               <div className="flex items-center gap-2">
                                   <div className={`w-2 h-2 rounded-full ${isRunning ? 'bg-yellow-400 animate-pulse' : 'bg-green-500'}`}></div>
-                                  <span className="text-[10px] text-gray-300 font-mono font-bold tracking-wider">GROQ-OS TERMINAL</span>
+                                  <span className="text-[10px] text-gray-300 font-mono font-bold tracking-wider">GROQ-OS</span>
                               </div>
                               {result && (
                                   <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${result.success ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}`}>
-                                      {result.success ? 'SUCCESS' : 'FAILED'}
+                                      {result.success ? 'DONE' : 'FAIL'}
                                   </span>
                               )}
                           </div>
@@ -382,69 +375,54 @@ const App = () => {
                               <span className="text-gray-500 mr-2 select-none">$</span>{cmd}
                           </div>
 
-                          {/* Action Bar / Status Area */}
-                          <div className="p-2 bg-gray-800 border-t border-gray-700 flex justify-between items-center">
-                              
-                              {/* Left Side: Status Text */}
-                              <div className="flex-1 px-2">
+                          {/* Action Bar or Result Area */}
+                          {result ? (
+                             // RESULT DISPLAY (Immediate, no buttons)
+                             <div className="border-t border-gray-700 animate-fade-in-down bg-black/95">
+                                 <div className="p-3 font-mono text-xs text-gray-200 overflow-x-auto max-h-80 whitespace-pre-wrap scrollbar-thin scrollbar-thumb-gray-700">
+                                     {result.output}
+                                 </div>
+                             </div>
+                          ) : (
+                              // ACTION BUTTONS (Before Run)
+                              <div className="p-2 bg-gray-800 border-t border-gray-700 flex justify-between items-center">
+                                  <div className="flex-1 px-2">
+                                      {isRunning ? (
+                                          <div className="flex items-center gap-2 text-xs text-blue-300 font-mono animate-pulse">
+                                              <Loader2 size={12} className="animate-spin" />
+                                              {executionStep}
+                                          </div>
+                                      ) : (
+                                          <span className="text-[10px] text-gray-500 uppercase tracking-widest">Ready</span>
+                                      )}
+                                  </div>
+
                                   {isRunning ? (
-                                      <div className="flex items-center gap-2 text-xs text-blue-300 font-mono animate-pulse">
-                                          <Loader2 size={12} className="animate-spin" />
-                                          {executionStep}
-                                      </div>
-                                  ) : result ? (
-                                      <div className="flex items-center gap-2 text-xs text-gray-400">
-                                           <Check size={12} className={result.success ? "text-green-500" : "hidden"} />
-                                           <span className="font-mono">{result.timestamp}</span>
+                                      <div className="bg-gray-700 text-gray-400 px-3 py-1 rounded-md text-[10px] font-bold">
+                                          ...
                                       </div>
                                   ) : (
-                                      <span className="text-[10px] text-gray-500 uppercase tracking-widest">Waiting to run</span>
+                                      <button 
+                                          onClick={() => executeTermuxCommandSmart(cmd, cmdId)}
+                                          disabled={!termuxConfig.isConnected}
+                                          className={`
+                                            flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide
+                                            transition-all active:scale-95 shadow-lg
+                                            ${termuxConfig.isConnected 
+                                                ? 'bg-blue-600 text-white hover:bg-blue-500 shadow-blue-900/20' 
+                                                : 'bg-gray-700 text-gray-500 cursor-not-allowed'}
+                                          `}
+                                      >
+                                          <Play size={10} fill="currentColor" />
+                                          RUN
+                                      </button>
                                   )}
-                              </div>
-
-                              {/* Right Side: Button */}
-                              {isRunning ? (
-                                  <div className="bg-gray-700 text-gray-400 px-3 py-1 rounded-md text-[10px] font-bold">
-                                      BUSY
-                                  </div>
-                              ) : result ? (
-                                  <button 
-                                    onClick={() => toggleLogs(cmdId)}
-                                    className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${isLogsOpen ? 'bg-gray-600 text-white' : 'bg-gray-700 text-gray-300 hover:text-white'}`}
-                                  >
-                                      {isLogsOpen ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
-                                      {isLogsOpen ? 'HIDE LOGS' : 'SHOW LOGS'}
-                                  </button>
-                              ) : (
-                                  <button 
-                                      onClick={() => executeTermuxCommandSmart(cmd, cmdId)}
-                                      disabled={!termuxConfig.isConnected}
-                                      className={`
-                                        flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide
-                                        transition-all active:scale-95 shadow-lg
-                                        ${termuxConfig.isConnected 
-                                            ? 'bg-green-600 text-white hover:bg-green-500 shadow-green-900/20' 
-                                            : 'bg-gray-700 text-gray-500 cursor-not-allowed'}
-                                      `}
-                                  >
-                                      <Play size={10} fill="currentColor" />
-                                      RUN
-                                  </button>
-                              )}
-                          </div>
-
-                          {/* Collapsible Logs Area (Auto-opened for short results) */}
-                          {result && isLogsOpen && (
-                              <div className="border-t border-gray-700 animate-fade-in-down">
-                                  <div className="bg-black p-3 font-mono text-xs text-gray-300 overflow-x-auto max-h-64 whitespace-pre-wrap scrollbar-thin scrollbar-thumb-gray-700">
-                                      {result.output}
-                                  </div>
                               </div>
                           )}
 
                           {!termuxConfig.isConnected && !result && (
                              <div className="bg-red-900/20 py-1 px-3 text-[10px] text-red-400 text-center border-t border-red-900/30">
-                                 Termux Not Connected
+                                 Termux Disconnected
                              </div>
                           )}
                       </div>
@@ -761,7 +739,7 @@ const App = () => {
       </div>
       
        <div className="mt-8 text-center">
-         <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Version 2.0.0 (Smart Markdown)</p>
+         <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Version 2.1.0 (Direct Result)</p>
        </div>
     </div>
   );
