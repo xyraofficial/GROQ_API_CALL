@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { 
   MessageSquare, 
   Activity, 
@@ -42,22 +44,34 @@ const formatModelName = (modelId: string) => {
   return modelId;
 };
 
-// --- Termux System Instruction ---
+// --- Termux System Instruction (SMARTER & MARKDOWN SUPPORT) ---
 const TERMUX_SYSTEM_PROMPT = `
 You are "Groq-OS", an advanced automated AI System Engineer capable of managing Android/Linux systems via Termux.
 
-Your Goal: Execute requested tasks precisely using shell commands.
+**CORE PROTOCOLS:**
 
-PROTOCOL:
-1. When a user asks for a task, analyze the requirements.
-2. Provide a brief, professional explanation.
-3. Generate the specific command wrapped in: <<<CMD: your_command_here >>>
-4. Do NOT verify previous installation unless asked. Assume you need to run the command.
+1.  **DISTINGUISH REQUESTS:**
+    *   **Informational/Questions:** If the user asks "How do I...", "What is...", or "Explain...", answer purely in **Markdown text**. Do NOT generate commands unless explicitly asked to execute them.
+    *   **Action/Execution:** If the user asks "Install...", "Check version...", "Create file...", "Run...", then you MUST generate the command block.
 
-Example:
-User: "Create a folder named Project"
-You: "Initializing file system operations. Creating directory 'Project'."
-<<<CMD: mkdir -p Project >>>
+2.  **FORMATTING:**
+    *   Use **Markdown** for all text responses (Bold key terms, use Lists for steps, use Code blocks for examples).
+    *   Keep explanations concise and professional.
+
+3.  **COMMAND GENERATION:**
+    *   To suggest a command to be executed by the UI, wrap it EXACTLY like this:
+    <<<CMD: your_command_here >>>
+
+**EXAMPLES:**
+
+User: "Check git version"
+You: "Checking the installed Git version."
+<<<CMD: git --version >>>
+
+User: "How does ls work?"
+You: "**ls** is a command to list directory contents.
+*   \`ls -a\`: Show hidden files.
+*   \`ls -l\`: Show detailed info."
 `;
 
 const App = () => {
@@ -73,14 +87,10 @@ const App = () => {
   // Termux State
   const [termuxConfig, setTermuxConfig] = useState<TermuxConfig>({ url: '', token: '12345', isConnected: false });
   
-  // --- NEW: Smart Execution State ---
-  // Tracks which specific command ID is currently running
+  // --- Smart Execution State ---
   const [activeCmdId, setActiveCmdId] = useState<string | null>(null);
-  // Tracks the current text step (e.g. "Analyzing...")
   const [executionStep, setExecutionStep] = useState<string>('');
-  // Stores results: { [cmdId]: { success: boolean, output: string } }
   const [cmdResults, setCmdResults] = useState<Record<string, { success: boolean, output: string, timestamp: string }>>({});
-  // Toggles for expanding logs
   const [expandedLogs, setExpandedLogs] = useState<Record<string, boolean>>({});
 
   // Chat State
@@ -117,7 +127,7 @@ const App = () => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, activeCmdId]); // Auto scroll when executing
+  }, [messages, activeCmdId, expandedLogs]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -180,7 +190,6 @@ const App = () => {
       
       const newConfig = { ...termuxConfig, url };
       
-      // We don't use global loading here to not block UI
       try {
           const res = await fetch(`${url}/`, { 
               method: 'GET',
@@ -216,12 +225,11 @@ const App = () => {
 
       setActiveCmdId(cmdId);
       
-      // 1. Smart Animation Sequence
-      const steps = ['Working...', 'Analyzing Environment...', 'Preparing Shell...', 'Executing...'];
+      // Smart Animation Sequence
+      const steps = ['Working...', 'Analyzing...', 'Executing...'];
       for (const step of steps) {
           setExecutionStep(step);
-          // Fake delay to make it look "Smart" and readable
-          await new Promise(resolve => setTimeout(resolve, 600)); 
+          await new Promise(resolve => setTimeout(resolve, 400)); 
       }
 
       try {
@@ -238,11 +246,17 @@ const App = () => {
           const data = await res.json();
           
           setExecutionStep('Finalizing...');
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 300));
 
           if (res.ok) {
-             const output = data.stdout || data.stderr || "Command executed successfully (no output).";
-             // Store result instead of appending message
+             const output = data.stdout || data.stderr || "Command executed successfully.";
+             
+             // --- SMART LOGIC: Auto-open if short output (like version check) ---
+             const isShortOutput = output.length < 250 && output.split('\n').length < 8;
+             if (isShortOutput) {
+                 setExpandedLogs(prev => ({...prev, [cmdId]: true}));
+             }
+
              setCmdResults(prev => ({
                  ...prev,
                  [cmdId]: { 
@@ -285,7 +299,7 @@ const App = () => {
 
     // Pass context about Termux connection state
     const contextMsg = termuxConfig.isConnected 
-        ? `[System Note: Termux is CONNECTED. You can execute commands.]`
+        ? `[System Note: Termux is CONNECTED. User can run commands.]`
         : `[System Note: Termux is NOT connected.]`;
     
     // Combine input
@@ -314,32 +328,47 @@ const App = () => {
   };
 
   // --- Message Renderer with Smart Command Blocks ---
-  const renderMessageContent = (content: string, msgIndex: number) => {
+  const renderMessageContent = (content: string, msgIndex: number, role: 'user' | 'assistant' | 'system') => {
       const cmdRegex = /<<<CMD:(.*?)>>>/g;
       const parts = content.split(cmdRegex);
       
-      if (parts.length === 1) return <div className="whitespace-pre-wrap">{content}</div>;
+      // Regular text rendering with Markdown
+      if (parts.length === 1) {
+          return (
+             <div className={`markdown-body prose ${role === 'user' ? 'user-msg text-white' : 'text-gray-800'}`}>
+                 <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+             </div>
+          );
+      }
 
       return (
-          <div className="whitespace-pre-wrap">
+          <div className="w-full">
               {parts.map((part, i) => {
-                  if (i % 2 === 0) return <span key={i}>{part}</span>;
+                  // Text parts (Markdown)
+                  if (i % 2 === 0) {
+                      if (!part.trim()) return null;
+                      return (
+                          <div key={i} className={`markdown-body prose mb-3 ${role === 'user' ? 'user-msg text-white' : 'text-gray-800'}`}>
+                             <ReactMarkdown remarkPlugins={[remarkGfm]}>{part}</ReactMarkdown>
+                          </div>
+                      );
+                  }
                   
+                  // Command parts (CMD block)
                   const cmd = part.trim();
-                  // Create a Unique ID for this specific command button
                   const cmdId = `cmd-${msgIndex}-${i}`;
                   const isRunning = activeCmdId === cmdId;
                   const result = cmdResults[cmdId];
                   const isLogsOpen = expandedLogs[cmdId];
 
                   return (
-                      <div key={cmdId} className="my-3 rounded-xl overflow-hidden shadow-lg border border-gray-700 bg-gray-900 w-full max-w-full">
+                      <div key={cmdId} className="my-2 rounded-xl overflow-hidden shadow-lg border border-gray-700 bg-gray-900 w-full max-w-full">
                           
                           {/* Header */}
                           <div className="bg-gray-800 px-3 py-2 flex items-center justify-between border-b border-gray-700">
                               <div className="flex items-center gap-2">
-                                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                                  <span className="text-xs text-gray-300 font-mono font-bold tracking-wider">GROQ-OS TERMINAL</span>
+                                  <div className={`w-2 h-2 rounded-full ${isRunning ? 'bg-yellow-400 animate-pulse' : 'bg-green-500'}`}></div>
+                                  <span className="text-[10px] text-gray-300 font-mono font-bold tracking-wider">GROQ-OS TERMINAL</span>
                               </div>
                               {result && (
                                   <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${result.success ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}`}>
@@ -349,8 +378,8 @@ const App = () => {
                           </div>
 
                           {/* Command Display */}
-                          <div className="p-4 bg-black/80 font-mono text-sm text-green-400 overflow-x-auto whitespace-nowrap">
-                              <span className="text-green-700 mr-2">$</span>{cmd}
+                          <div className="p-3 bg-black/80 font-mono text-sm text-green-400 overflow-x-auto whitespace-nowrap border-l-4 border-green-600">
+                              <span className="text-gray-500 mr-2 select-none">$</span>{cmd}
                           </div>
 
                           {/* Action Bar / Status Area */}
@@ -360,29 +389,28 @@ const App = () => {
                               <div className="flex-1 px-2">
                                   {isRunning ? (
                                       <div className="flex items-center gap-2 text-xs text-blue-300 font-mono animate-pulse">
-                                          <Loader2 size={14} className="animate-spin" />
+                                          <Loader2 size={12} className="animate-spin" />
                                           {executionStep}
                                       </div>
                                   ) : result ? (
                                       <div className="flex items-center gap-2 text-xs text-gray-400">
-                                           <Check size={14} className={result.success ? "text-green-500" : "hidden"} />
-                                           <XCircle size={14} className={!result.success ? "text-red-500" : "hidden"} />
-                                           {result.timestamp}
+                                           <Check size={12} className={result.success ? "text-green-500" : "hidden"} />
+                                           <span className="font-mono">{result.timestamp}</span>
                                       </div>
                                   ) : (
-                                      <span className="text-[10px] text-gray-500 uppercase tracking-widest">Ready to execute</span>
+                                      <span className="text-[10px] text-gray-500 uppercase tracking-widest">Waiting to run</span>
                                   )}
                               </div>
 
                               {/* Right Side: Button */}
                               {isRunning ? (
-                                  <button disabled className="bg-gray-700 text-gray-400 px-4 py-1.5 rounded-lg text-xs font-bold cursor-wait">
-                                      PROCESSING...
-                                  </button>
+                                  <div className="bg-gray-700 text-gray-400 px-3 py-1 rounded-md text-[10px] font-bold">
+                                      BUSY
+                                  </div>
                               ) : result ? (
                                   <button 
                                     onClick={() => toggleLogs(cmdId)}
-                                    className="flex items-center gap-1 bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
+                                    className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${isLogsOpen ? 'bg-gray-600 text-white' : 'bg-gray-700 text-gray-300 hover:text-white'}`}
                                   >
                                       {isLogsOpen ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
                                       {isLogsOpen ? 'HIDE LOGS' : 'SHOW LOGS'}
@@ -392,23 +420,23 @@ const App = () => {
                                       onClick={() => executeTermuxCommandSmart(cmd, cmdId)}
                                       disabled={!termuxConfig.isConnected}
                                       className={`
-                                        flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide
+                                        flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide
                                         transition-all active:scale-95 shadow-lg
                                         ${termuxConfig.isConnected 
-                                            ? 'bg-gradient-to-r from-blue-600 to-ios-blue text-white hover:opacity-90 shadow-blue-900/20' 
+                                            ? 'bg-green-600 text-white hover:bg-green-500 shadow-green-900/20' 
                                             : 'bg-gray-700 text-gray-500 cursor-not-allowed'}
                                       `}
                                   >
-                                      <Play size={12} fill="currentColor" />
+                                      <Play size={10} fill="currentColor" />
                                       RUN
                                   </button>
                               )}
                           </div>
 
-                          {/* Collapsible Logs Area */}
+                          {/* Collapsible Logs Area (Auto-opened for short results) */}
                           {result && isLogsOpen && (
                               <div className="border-t border-gray-700 animate-fade-in-down">
-                                  <div className="bg-black p-3 font-mono text-xs text-gray-300 overflow-x-auto max-h-40 whitespace-pre-wrap scrollbar-thin scrollbar-thumb-gray-700">
+                                  <div className="bg-black p-3 font-mono text-xs text-gray-300 overflow-x-auto max-h-64 whitespace-pre-wrap scrollbar-thin scrollbar-thumb-gray-700">
                                       {result.output}
                                   </div>
                               </div>
@@ -416,7 +444,7 @@ const App = () => {
 
                           {!termuxConfig.isConnected && !result && (
                              <div className="bg-red-900/20 py-1 px-3 text-[10px] text-red-400 text-center border-t border-red-900/30">
-                                 Connection required
+                                 Termux Not Connected
                              </div>
                           )}
                       </div>
@@ -513,7 +541,7 @@ const App = () => {
                 ? 'bg-ios-blue text-white rounded-tr-sm' 
                 : 'bg-white text-gray-800 rounded-tl-sm border border-gray-100'}
             `}>
-              {msg.role === 'assistant' ? renderMessageContent(msg.content, idx) : msg.content}
+              {msg.role === 'assistant' ? renderMessageContent(msg.content, idx, msg.role) : renderMessageContent(msg.content, idx, msg.role)}
             </div>
           </div>
         ))}
@@ -733,7 +761,7 @@ const App = () => {
       </div>
       
        <div className="mt-8 text-center">
-         <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Version 1.8.0 (Smart Execution UI)</p>
+         <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Version 2.0.0 (Smart Markdown)</p>
        </div>
     </div>
   );
