@@ -23,7 +23,9 @@ import {
   ChevronDown,
   ChevronUp,
   Code,
-  Zap
+  Zap,
+  Search,
+  ShieldAlert
 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 
@@ -45,51 +47,36 @@ const formatModelName = (modelId: string) => {
   return modelId;
 };
 
-// --- Termux System Instruction (ADVANCED & SMART) ---
+// --- Termux System Instruction (SMART SEARCH & DESTROY) ---
 const TERMUX_SYSTEM_PROMPT = `
 You are **Groq-OS**, an advanced AI Shell Assistant for Termux.
 
 **CORE BEHAVIORS:**
 
 1.  **PROTOCOL (Explanation vs. Action):**
-    *   **User asks "How to...":** Explain the concept/steps clearly in Markdown. Do NOT generate a run-able command block yet. Ask: "Shall I execute this for you?"
-    *   **User says "Yes/Run it/Do it":** Generate the command block immediately.
-    *   **User gives direct order ("List files", "Install git"):** Generate the command block immediately.
+    *   **User asks "How to...":** Explain concepts. Do NOT generate a run-able command block yet.
+    *   **User says "Run/Yes":** Generate the command block.
 
 2.  **COMMAND FORMAT:**
     *   Wrap executable commands EXACTLY like this:
     <<<CMD: your_command_here >>>
 
-3.  **ADVANCED FILE OPERATIONS:**
-    *   **Delete (Smart Mode):** If user says "delete createdbykztutorial", and you suspect case sensitivity issues, use wildcards or case-insensitive matching if possible. 
-        *   *Scenario:* User: "hapus file createdbykztutorial" -> You: "I'll remove the file matching that name." -> CMD: \`rm -rf *createdbykztutorial*\` or \`find . -iname "*createdbykztutorial*" -delete\`.
-    *   **Create/Edit:** Use \`echo "content" > file.txt\` or \`printf\` for simple files.
-    *   **Analyze:** Use \`cat filename\` or \`head filename\`.
-    *   **System:** You can run \`pkg install\`, \`top\`, \`neofetch\`, etc.
+3.  **SMART DELETION PROTOCOL (CRITICAL):**
+    *   **NEVER GUESS:** If user says "delete createdbykztutorial" (inexact name), **DO NOT** generate \`rm\` immediately.
+    *   **STEP 1 (SEARCH):** Generate a search command first to find the exact filename.
+        <<<CMD: find . -maxdepth 2 -iname "*createdbykztutorial*" >>>
+    *   **STEP 2 (ANALYZE):** Wait for the system output.
+    *   **STEP 3 (CONFIRM):** The system will show you the result (e.g., "./CREATED_BY_Kz.tutorial"). You must say: "I found this file: 'CREATED_BY_Kz.tutorial'. Shall I delete it?"
+    *   **STEP 4 (DESTROY):** Only after user confirms, generate the delete command for the **EXACT** file found.
+        <<<CMD: rm -rf "CREATED_BY_Kz.tutorial" >>>
 
 4.  **POST-EXECUTION ANALYSIS:**
-    *   The system will feed the command output back to you.
-    *   **CRITICAL:** When you see the output, **summarize it in natural language** in the chat. Don't just repeat the output.
-    *   *Example:* Output shows "git version 2.45". You say: "Git is successfully installed (v2.45)."
+    *   Summarize command outputs briefly in natural language.
+    *   If output is "git version 2.x", say "Git is installed (v2.x)."
 
 5.  **PERSONALITY:**
-    *   Professional, efficient, "Hacker" aesthetic text.
+    *   High-tech, precise, "Cyber" aesthetic.
     *   Keep responses concise.
-
-**SCENARIOS:**
-
-User: "Cara install python"
-You: "To install Python, we use the package manager. **Would you like me to run the installer?**"
-
-User: "Yes"
-You: "Executing installation..."
-<<<CMD: pkg install python -y >>>
-
-User: "Cek versi"
-You: "Checking..."
-<<<CMD: python --version >>>
-(System returns output)
-You: "It looks like Python 3.11 is currently active."
 `;
 
 const App = () => {
@@ -247,11 +234,18 @@ const App = () => {
 
       setActiveCmdId(cmdId);
       
-      // Smart Animation Sequence
-      const steps = ['Init...', 'Sending...', 'Exec...'];
+      // COOL CYBER SEQUENCE
+      const steps = [
+          'INITIALIZING UPLINK...', 
+          'SCANNING FILESYSTEM...', 
+          'TARGET ACQUIRED...', 
+          'EXECUTING PAYLOAD...'
+      ];
+      
+      // Simulate steps with delays
       for (const step of steps) {
           setExecutionStep(step);
-          await new Promise(resolve => setTimeout(resolve, 200)); 
+          await new Promise(resolve => setTimeout(resolve, 400)); 
       }
 
       try {
@@ -278,7 +272,6 @@ const App = () => {
           }));
 
           // --- SMART AI FOLLOW UP ---
-          // Send the output back to the AI invisibly
           if (res.ok) {
               await handleAiFollowUp(cmd, output);
           }
@@ -300,17 +293,12 @@ const App = () => {
 
   const handleAiFollowUp = async (cmd: string, output: string) => {
       setIsLoading(true);
-      // Construct a system message representing the terminal output
       const systemResultMsg: Message = { 
           role: 'system', 
-          content: `[SYSTEM OUTPUT for command '${cmd}']: ${output}\n\nAnalyze this output and summarize it for the user briefly.` 
+          content: `[SYSTEM OUTPUT for command '${cmd}']: ${output}\n\nAnalyze this output. If it was a search, tell the user what was found and ask to confirm action. If it was an action, summarize success.` 
       };
       
       const newHistory = [...messages, systemResultMsg];
-      
-      // We don't necessarily need to add the huge output to the UI state 'messages' 
-      // (to keep chat clean), but we pass it to the API.
-      // However, to keep context for future, we should probably add a condensed version or just handle the response.
       
       try {
           const response = await chatWithGroq(newHistory, apiKey, selectedModel);
@@ -337,8 +325,6 @@ const App = () => {
     setIsLoading(true);
 
     try {
-      // Filter out 'System Output' messages from visual history if we want to save tokens, 
-      // but here we keep them for context unless they are too huge.
       const msgsToSend: Message[] = [...messages, { role: 'system', content: contextMsg }, userMsg];
       const response = await chatWithGroq(msgsToSend, apiKey, selectedModel);
       const assistantMsg = response.choices[0].message;
@@ -355,12 +341,11 @@ const App = () => {
     }
   };
 
-  // --- Message Renderer with Redesigned Terminal ---
+  // --- Message Renderer with ULTRA COOL Terminal ---
   const renderMessageContent = (content: string, msgIndex: number, role: 'user' | 'assistant' | 'system') => {
       const cmdRegex = /<<<CMD:(.*?)>>>/g;
       const parts = content.split(cmdRegex);
       
-      // Regular text rendering with Markdown
       if (parts.length === 1) {
           return (
              <div className={`markdown-body prose ${role === 'user' ? 'user-msg text-white' : 'text-gray-800'}`}>
@@ -372,7 +357,6 @@ const App = () => {
       return (
           <div className="w-full">
               {parts.map((part, i) => {
-                  // Text parts (Markdown)
                   if (i % 2 === 0) {
                       if (!part.trim()) return null;
                       return (
@@ -382,67 +366,84 @@ const App = () => {
                       );
                   }
                   
-                  // Command parts (CMD block)
+                  // Command Block
                   const cmd = part.trim();
                   const cmdId = `cmd-${msgIndex}-${i}`;
                   const isRunning = activeCmdId === cmdId;
                   const result = cmdResults[cmdId];
 
-                  // --- NEW TERMINAL UI ---
+                  // --- COOL ANIMATED TERMINAL ---
                   return (
-                      <div key={cmdId} className="my-3 rounded-lg overflow-hidden border border-gray-200 bg-white shadow-sm w-full font-mono text-sm">
+                      <div key={cmdId} className={`my-3 rounded-lg overflow-hidden border transition-all duration-300 ${isRunning ? 'border-green-500 shadow-[0_0_15px_rgba(34,197,94,0.3)]' : 'border-gray-200 bg-white shadow-sm'} w-full font-mono text-sm`}>
                           
-                          {/* Command Strip */}
-                          <div className="flex items-stretch">
-                              <div className="bg-gray-900 text-gray-400 px-3 py-3 flex items-center select-none">
-                                  $
-                              </div>
-                              <div className="flex-1 bg-gray-50 text-gray-800 px-3 py-3 overflow-x-auto whitespace-nowrap flex items-center">
-                                  {cmd}
-                              </div>
-                              
-                              {/* Action Button Area */}
-                              <div className="bg-gray-50 border-l border-gray-200">
-                                  {isRunning ? (
-                                      <button disabled className="h-full px-4 flex items-center justify-center bg-gray-100 text-blue-600">
-                                          <Loader2 size={16} className="animate-spin" />
-                                      </button>
-                                  ) : result ? (
-                                      <div className={`h-full px-4 flex items-center justify-center ${result.success ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
-                                          {result.success ? <Check size={18} /> : <XCircle size={18} />}
-                                      </div>
-                                  ) : (
-                                      <button 
-                                          onClick={() => executeTermuxCommandSmart(cmd, cmdId)}
-                                          disabled={!termuxConfig.isConnected}
-                                          className={`h-full px-4 flex items-center justify-center transition-colors font-bold tracking-wider text-xs uppercase
-                                            ${termuxConfig.isConnected 
-                                                ? 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800' 
-                                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'}
-                                          `}
-                                      >
-                                          RUN
-                                      </button>
-                                  )}
-                              </div>
-                          </div>
-                          
-                          {/* Minimalist Status Bar / Execution Text */}
-                          {isRunning && (
-                             <div className="bg-blue-50/50 px-3 py-1 text-[10px] text-blue-500 flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span>
-                                Executing via Termux ({executionStep})
-                             </div>
-                          )}
+                          {/* Running State Overlay */}
+                          {isRunning ? (
+                             <div className="bg-black text-green-400 p-4 relative overflow-hidden">
+                                 {/* Scanning Line Animation */}
+                                 <div className="absolute top-0 left-0 w-full h-full bg-[linear-gradient(transparent_0%,rgba(34,197,94,0.1)_50%,transparent_100%)] animate-[scan_2s_linear_infinite] pointer-events-none"></div>
+                                 
+                                 <div className="flex justify-between items-center mb-2 z-10 relative">
+                                     <div className="flex items-center gap-2">
+                                         <Loader2 size={16} className="animate-spin" />
+                                         <span className="font-bold tracking-widest text-xs">GROQ_OS::EXEC</span>
+                                     </div>
+                                     <span className="text-[10px] bg-green-900/40 px-2 py-0.5 rounded border border-green-800">PID: {Math.floor(Math.random() * 9000) + 1000}</span>
+                                 </div>
 
-                          {/* Result View (Only if error or explicitly requested, but usually AI handles output) */}
-                          {result && !result.success && (
-                             <div className="bg-red-50 border-t border-red-100 p-2 text-xs text-red-600 whitespace-pre-wrap">
-                                 {result.output}
+                                 <div className="font-mono text-xs space-y-1 z-10 relative opacity-90">
+                                     <div className="flex gap-2">
+                                         <span className="text-gray-500">$</span>
+                                         <span className="text-white">{cmd}</span>
+                                     </div>
+                                     <div className="text-green-500 mt-2 font-bold flex items-center gap-2">
+                                         <ChevronRight size={14} />
+                                         {executionStep}
+                                         <span className="animate-pulse">_</span>
+                                     </div>
+                                 </div>
+                             </div>
+                          ) : (
+                             // Idle / Result State
+                             <div className="flex flex-col">
+                                 <div className="flex items-stretch bg-gray-50">
+                                     <div className="bg-gray-800 text-gray-400 px-3 py-3 flex items-center select-none text-xs">
+                                         TERMUX
+                                     </div>
+                                     <div className="flex-1 px-3 py-3 overflow-x-auto whitespace-nowrap flex items-center text-gray-700 font-medium">
+                                         <span className="text-blue-500 mr-2">$</span> {cmd}
+                                     </div>
+                                     
+                                     <div className="border-l border-gray-200">
+                                         {result ? (
+                                              <div className={`h-full px-4 flex items-center gap-2 text-xs font-bold uppercase tracking-wider ${result.success ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+                                                  {result.success ? <Check size={16} /> : <XCircle size={16} />}
+                                                  {result.success ? 'DONE' : 'ERR'}
+                                              </div>
+                                         ) : (
+                                              <button 
+                                                  onClick={() => executeTermuxCommandSmart(cmd, cmdId)}
+                                                  disabled={!termuxConfig.isConnected}
+                                                  className={`h-full px-5 flex items-center gap-2 transition-colors font-bold tracking-wider text-[11px] uppercase
+                                                    ${termuxConfig.isConnected 
+                                                        ? 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 hover:shadow-lg' 
+                                                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'}
+                                                  `}
+                                              >
+                                                  <Play size={12} fill="currentColor" />
+                                                  EXECUTE
+                                              </button>
+                                         )}
+                                     </div>
+                                 </div>
+                                 
+                                 {/* Only show raw error output. Success output handled by AI summary */}
+                                 {result && !result.success && (
+                                     <div className="bg-gray-900 text-red-400 p-2 text-xs font-mono border-t border-gray-800">
+                                         {result.output}
+                                     </div>
+                                 )}
                              </div>
                           )}
-                          
-                          {/* Note: We hide success output because AI will read it and summarize it in the NEXT message */}
                       </div>
                   );
               })}
@@ -791,7 +792,7 @@ const App = () => {
       </div>
       
        <div className="mt-8 text-center">
-         <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Version 3.0.0 (Groq-OS)</p>
+         <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Version 4.2.0 (Cyber Core)</p>
        </div>
     </div>
   );
