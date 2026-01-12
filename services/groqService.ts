@@ -20,7 +20,7 @@ export const checkGroqStatus = async (apiKey: string): Promise<boolean> => {
 export const chatWithGroq = async (
   messages: Message[],
   apiKey: string,
-  model: string = 'llama3-8b-8192'
+  model: string = 'llama-3.3-70b-versatile'
 ): Promise<GroqResponse> => {
   if (!apiKey) throw new Error("API Key is missing");
 
@@ -40,8 +40,14 @@ export const chatWithGroq = async (
   });
 
   if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error?.message || 'Failed to fetch from Groq');
+    const errorData = await response.json().catch(() => ({}));
+    
+    // Check for Rate Limit specifically
+    if (response.status === 429) {
+      throw new Error('GROQ_RATE_LIMIT_EXCEEDED');
+    }
+
+    throw new Error(errorData.error?.message || `API Error: ${response.statusText}`);
   }
 
   return response.json();

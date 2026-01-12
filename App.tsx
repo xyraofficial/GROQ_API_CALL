@@ -6,12 +6,12 @@ import {
   Send, 
   Key, 
   Server, 
-  CheckCircle, 
-  AlertCircle, 
   Cpu, 
   Trash2,
   Lock,
-  ChevronRight
+  ChevronRight,
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 
@@ -27,6 +27,12 @@ const generateChartData = () => {
   }));
 };
 
+const formatModelName = (modelId: string) => {
+  if (modelId.includes('70b')) return 'Llama 3.3 70B';
+  if (modelId.includes('8b')) return 'Llama 3.1 8B';
+  return modelId;
+};
+
 const App = () => {
   // State
   const [apiKey, setApiKey] = useState<string>('');
@@ -34,6 +40,8 @@ const App = () => {
   const [isKeyValid, setIsKeyValid] = useState<boolean>(false);
   const [hasCheckedKey, setHasCheckedKey] = useState<boolean>(false);
   const [currentView, setCurrentView] = useState<AppView>(AppView.CHAT);
+  const [showRateLimitModal, setShowRateLimitModal] = useState<boolean>(false);
+  const [newRateLimitKey, setNewRateLimitKey] = useState<string>('');
   
   // Chat State
   const [messages, setMessages] = useState<Message[]>([
@@ -78,6 +86,7 @@ const App = () => {
     if (valid) {
       localStorage.setItem('groq_api_key', key);
     }
+    return valid;
   };
 
   const handleSaveKey = () => {
@@ -86,6 +95,28 @@ const App = () => {
       verifyKey(tempKey);
     } else {
       alert('Invalid Groq API Key format. It should start with "gsk_".');
+    }
+  };
+
+  // Handler specifically for the Rate Limit Modal
+  const handleUpdateRateLimitKey = async () => {
+    if (!newRateLimitKey.startsWith('gsk_')) {
+      alert('Invalid Groq API Key format.');
+      return;
+    }
+    setIsLoading(true);
+    const valid = await checkGroqStatus(newRateLimitKey);
+    setIsLoading(false);
+
+    if (valid) {
+      setApiKey(newRateLimitKey);
+      localStorage.setItem('groq_api_key', newRateLimitKey);
+      setNewRateLimitKey('');
+      setShowRateLimitModal(false);
+      // Remove the last system error message if it exists
+      setMessages(prev => prev.filter(msg => !msg.content.includes("Rate limit exceeded")));
+    } else {
+      alert('The API Key provided is invalid. Please check and try again.');
     }
   };
 
@@ -110,7 +141,12 @@ const App = () => {
       const assistantMsg = response.choices[0].message;
       setMessages(prev => [...prev, assistantMsg]);
     } catch (error: any) {
-      setMessages(prev => [...prev, { role: 'system', content: `Error: ${error.message}` }]);
+      if (error.message === 'GROQ_RATE_LIMIT_EXCEEDED') {
+        setShowRateLimitModal(true);
+        setMessages(prev => [...prev, { role: 'system', content: '⚠️ Rate limit exceeded. Waiting for new key...' }]);
+      } else {
+        setMessages(prev => [...prev, { role: 'system', content: `Error: ${error.message}` }]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -154,6 +190,38 @@ const App = () => {
     </div>
   );
 
+  const renderRateLimitModal = () => (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-black/40 backdrop-blur-md">
+      <div className="bg-white/95 backdrop-blur-xl w-full max-w-xs rounded-[20px] shadow-2xl p-6 text-center animate-fade-in-up">
+        <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+           <AlertTriangle className="w-6 h-6 text-red-500" />
+        </div>
+        <h3 className="text-lg font-bold text-gray-900 mb-2">Limit Reached</h3>
+        <p className="text-[15px] text-gray-500 leading-relaxed mb-6">
+          Your free API key has reached its usage limit. Please enter a new key to continue chatting.
+        </p>
+        
+        <div className="space-y-3">
+          <IOSInput 
+            placeholder="New API Key (gsk_...)" 
+            value={newRateLimitKey} 
+            onChange={(e) => setNewRateLimitKey(e.target.value)} 
+            type="password"
+            className="!bg-gray-100/80 text-center placeholder:text-center"
+          />
+          <div className="flex flex-col gap-2 mt-4">
+            <IOSButton onClick={handleUpdateRateLimitKey} fullWidth disabled={isLoading}>
+              {isLoading ? 'Verifying...' : 'Update Key'}
+            </IOSButton>
+            <IOSButton variant="ghost" onClick={() => setShowRateLimitModal(false)} fullWidth>
+              Cancel
+            </IOSButton>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   const renderChat = () => (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -165,7 +233,7 @@ const App = () => {
             </IOSButton>
         </div>
         <IOSSegmentedControl 
-          options={GROQ_MODELS.map(m => ({ label: m.split('-')[0], value: m }))}
+          options={GROQ_MODELS.map(m => ({ label: formatModelName(m), value: m }))}
           value={selectedModel}
           onChange={setSelectedModel}
         />
@@ -180,6 +248,7 @@ const App = () => {
               ${msg.role === 'user' 
                 ? 'bg-ios-blue text-white rounded-tr-sm' 
                 : 'bg-white text-gray-800 rounded-tl-sm border border-gray-100'}
+              ${msg.content.includes('Rate limit exceeded') ? 'border-red-200 bg-red-50 text-red-600' : ''}
             `}>
               {msg.content}
             </div>
@@ -308,7 +377,7 @@ const App = () => {
                 Content-Type: application/json<br/>
                 <br/>
                 {'{'}<br/>
-                &nbsp;&nbsp;"model": "llama3-8b-8192",<br/>
+                &nbsp;&nbsp;"model": "{selectedModel}",<br/>
                 &nbsp;&nbsp;"messages": [...]<br/>
                 {'}'}
             </code>
@@ -330,7 +399,7 @@ const App = () => {
                 <span className="text-gray-900 font-medium">Default Model</span>
             </div>
             <span className="text-gray-400 text-sm flex items-center">
-                {selectedModel.split('-')[0]} <ChevronRight size={16} />
+                {formatModelName(selectedModel)} <ChevronRight size={16} />
             </span>
         </div>
         <div className="p-4 flex items-center justify-between border-b border-gray-100">
@@ -356,7 +425,7 @@ const App = () => {
       </div>
 
        <div className="mt-8 text-center">
-         <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Version 1.0.2</p>
+         <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Version 1.0.3</p>
          <p className="text-xs text-gray-300 mt-1">Deployed on Vercel</p>
        </div>
     </div>
@@ -369,8 +438,11 @@ const App = () => {
   }
 
   return (
-    <div className="h-screen w-full flex flex-col md:flex-row bg-ios-bg text-gray-900 overflow-hidden font-sans">
+    <div className="h-screen w-full flex flex-col md:flex-row bg-ios-bg text-gray-900 overflow-hidden font-sans relative">
       
+      {/* Rate Limit Modal Overlay */}
+      {showRateLimitModal && renderRateLimitModal()}
+
       {/* Sidebar (Desktop) / Bottom Nav (Mobile) */}
       <div className="
         md:w-64 md:h-full md:border-r md:border-gray-200 bg-white/80 backdrop-blur-xl
