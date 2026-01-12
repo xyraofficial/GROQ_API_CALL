@@ -70,7 +70,7 @@ const App = () => {
   const [newRateLimitKey, setNewRateLimitKey] = useState<string>('');
   
   // Termux State
-  const [termuxConfig, setTermuxConfig] = useState<TermuxConfig>({ url: '', token: '', isConnected: false });
+  const [termuxConfig, setTermuxConfig] = useState<TermuxConfig>({ url: '', token: '12345', isConnected: false });
   const [termuxOutput, setTermuxOutput] = useState<string>('');
   const [isTermuxRunning, setIsTermuxRunning] = useState<boolean>(false);
 
@@ -175,21 +175,26 @@ const App = () => {
       // Test Connection
       setIsTermuxRunning(true);
       try {
-          const res = await fetch(`${url}/`, { method: 'GET' });
+          const res = await fetch(`${url}/`, { 
+              method: 'GET',
+              headers: {
+                  'Cache-Control': 'no-cache'
+              }
+          });
           if (res.ok) {
               const data = await res.json();
               if (data.status === 'online') {
                   const finalConfig = { ...newConfig, isConnected: true };
                   setTermuxConfig(finalConfig);
                   localStorage.setItem('termux_config', JSON.stringify(finalConfig));
-                  alert('Successfully connected to Termux!');
+                  alert('Successfully connected to Termux! (CORS Checked)');
               }
           } else {
               throw new Error('Server not ready');
           }
-      } catch (e) {
+      } catch (e: any) {
           setTermuxConfig({ ...newConfig, isConnected: false });
-          alert('Failed to connect. Ensure Python script is running and URL is correct.');
+          alert(`Failed to connect: ${e.message}. \n\nMake sure you are using the NEW Python script with CORS fix.`);
       } finally {
           setIsTermuxRunning(false);
       }
@@ -462,7 +467,7 @@ const App = () => {
       <div className="p-4 h-full overflow-y-auto">
           <h1 className="text-2xl font-bold mb-2">Termux Connection</h1>
           <p className="text-gray-500 mb-6 text-sm">
-              Connect Termux without Ngrok (Fixes connection errors). Use the SSH method below.
+              Connect Termux with SSH. Now supports Vercel (CORS Fixed).
           </p>
 
           <IOSCard className="space-y-4 mb-6">
@@ -486,8 +491,8 @@ const App = () => {
                       onChange={(e) => setTermuxConfig({...termuxConfig, url: e.target.value})}
                   />
                   <IOSInput 
-                      label="Access Token (from script)"
-                      placeholder="e.g. a1b2c3d4..."
+                      label="Access Token (Default: 12345)"
+                      placeholder="12345"
                       type="password"
                       value={termuxConfig.token}
                       onChange={(e) => setTermuxConfig({...termuxConfig, token: e.target.value})}
@@ -500,16 +505,16 @@ const App = () => {
 
           <IOSCard>
               <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <LinkIcon size={16} /> How to Connect (NO NGROK)
+                  <LinkIcon size={16} /> Connection Steps (CORS Fixed)
               </h3>
               <ol className="text-sm text-gray-600 space-y-2 list-decimal list-inside">
                   <li>In Termux: <code className="bg-gray-100 px-1 rounded">pkg install python openssh</code></li>
                   <li>Install Flask: <code className="bg-gray-100 px-1 rounded">pip install flask</code></li>
                   <li>
-                    <b>Important:</b> Delete the old script. Create a new one with the code provided by AI.
+                    <b>CRITICAL:</b> Delete old script. Copy-paste the NEW code below.
                   </li>
-                  <li>Run the script. It will use <b>SSH Tunneling</b> (Serveo). No installation needed.</li>
-                  <li>Copy the new URL and Token.</li>
+                  <li>Run it. It now includes <b>Access-Control-Allow-Origin</b> headers.</li>
+                  <li>The Default Token is now <b>12345</b> (no need to copy random tokens).</li>
               </ol>
           </IOSCard>
       </div>
@@ -634,7 +639,7 @@ const App = () => {
       </div>
       
        <div className="mt-8 text-center">
-         <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Version 1.2.0 (No Ngrok)</p>
+         <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Version 1.3.0 (CORS FIX)</p>
        </div>
     </div>
   );
