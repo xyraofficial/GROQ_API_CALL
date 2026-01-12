@@ -1,0 +1,5 @@
+{
+  "name": "Groq iOS Client",
+  "description": "A high-performance, iOS-themed interface for Groq AI models with API status monitoring and key management.",
+  "requestFramePermissions": []
+}
