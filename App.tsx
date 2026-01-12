@@ -11,11 +11,15 @@ import {
   Lock,
   ChevronRight,
   AlertTriangle,
-  RefreshCw
+  Terminal,
+  Play,
+  Check,
+  XCircle,
+  Link as LinkIcon
 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 
-import { AppView, Message, GROQ_MODELS, ApiStatusMetric } from './types';
+import { AppView, Message, GROQ_MODELS, ApiStatusMetric, TermuxConfig } from './types';
 import { chatWithGroq, checkGroqStatus } from './services/groqService';
 import { IOSButton, IOSCard, IOSInput, IOSSegmentedControl } from './components/IOSComponents';
 
@@ -33,6 +37,27 @@ const formatModelName = (modelId: string) => {
   return modelId;
 };
 
+// --- Termux System Instruction ---
+const TERMUX_SYSTEM_PROMPT = `
+You are an advanced AI assistant capable of executing commands on the user's Termux Android terminal.
+Current System: Linux/Android (Termux).
+
+IMPORTANT: To suggest a command to be executed, you MUST wrap the command code in a special block exactly like this:
+<<<CMD: your_command_here >>>
+
+Example:
+To list files, reply:
+Here are your files:
+<<<CMD: ls -la >>>
+
+To install python:
+I will install python for you.
+<<<CMD: pkg install python >>>
+
+Do NOT execute commands that destroy the system (like rm -rf /) without explicit user confirmation in the text.
+Always prefer non-interactive commands (add -y to apt/pkg installs).
+`;
+
 const App = () => {
   // State
   const [apiKey, setApiKey] = useState<string>('');
@@ -43,9 +68,14 @@ const App = () => {
   const [showRateLimitModal, setShowRateLimitModal] = useState<boolean>(false);
   const [newRateLimitKey, setNewRateLimitKey] = useState<string>('');
   
+  // Termux State
+  const [termuxConfig, setTermuxConfig] = useState<TermuxConfig>({ url: '', token: '', isConnected: false });
+  const [termuxOutput, setTermuxOutput] = useState<string>('');
+  const [isTermuxRunning, setIsTermuxRunning] = useState<boolean>(false);
+
   // Chat State
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'system', content: 'You are a helpful, smart assistant. Be concise and elegant.' }
+    { role: 'system', content: TERMUX_SYSTEM_PROMPT + ' You are a helpful, smart assistant. Be concise and elegant.' }
   ]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -67,11 +97,17 @@ const App = () => {
     } else {
       setHasCheckedKey(true);
     }
+    
+    // Load Termux Config
+    const storedTermux = localStorage.getItem('termux_config');
+    if (storedTermux) {
+        setTermuxConfig(JSON.parse(storedTermux));
+    }
   }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, termuxOutput]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -98,7 +134,6 @@ const App = () => {
     }
   };
 
-  // Handler specifically for the Rate Limit Modal
   const handleUpdateRateLimitKey = async () => {
     if (!newRateLimitKey.startsWith('gsk_')) {
       alert('Invalid Groq API Key format.');
@@ -113,7 +148,6 @@ const App = () => {
       localStorage.setItem('groq_api_key', newRateLimitKey);
       setNewRateLimitKey('');
       setShowRateLimitModal(false);
-      // Remove the last system error message if it exists
       setMessages(prev => prev.filter(msg => !msg.content.includes("Rate limit exceeded")));
     } else {
       alert('The API Key provided is invalid. Please check and try again.');
@@ -125,19 +159,97 @@ const App = () => {
     setApiKey('');
     setTempKey('');
     setIsKeyValid(false);
-    setMessages([{ role: 'system', content: 'You are a helpful, smart assistant. Be concise and elegant.' }]);
+    setMessages([{ role: 'system', content: TERMUX_SYSTEM_PROMPT }]);
+  };
+
+  // --- Termux Logic ---
+
+  const saveTermuxConfig = async () => {
+      // Basic validation
+      let url = termuxConfig.url.trim();
+      if (url.endsWith('/')) url = url.slice(0, -1); // remove trailing slash
+      
+      const newConfig = { ...termuxConfig, url };
+      
+      // Test Connection
+      setIsTermuxRunning(true);
+      try {
+          const res = await fetch(`${url}/`, { method: 'GET' });
+          if (res.ok) {
+              const data = await res.json();
+              if (data.status === 'online') {
+                  const finalConfig = { ...newConfig, isConnected: true };
+                  setTermuxConfig(finalConfig);
+                  localStorage.setItem('termux_config', JSON.stringify(finalConfig));
+                  alert('Successfully connected to Termux!');
+              }
+          } else {
+              throw new Error('Server not ready');
+          }
+      } catch (e) {
+          setTermuxConfig({ ...newConfig, isConnected: false });
+          alert('Failed to connect. Check your Ngrok URL and ensure Python script is running.');
+      } finally {
+          setIsTermuxRunning(false);
+      }
+  };
+
+  const executeTermuxCommand = async (cmd: string) => {
+      if (!termuxConfig.isConnected || !termuxConfig.url) {
+          alert('Termux is not connected. Go to Settings/Termux to configure.');
+          return;
+      }
+
+      setIsTermuxRunning(true);
+      try {
+          const res = await fetch(`${termuxConfig.url}/execute`, {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json',
+                  'X-Auth-Token': termuxConfig.token
+              },
+              body: JSON.stringify({ command: cmd })
+          });
+          
+          const data = await res.json();
+          if (res.ok) {
+             const output = data.stdout || data.stderr || "Command executed (no output).";
+             // Append output to chat as a system message
+             const outputMsg: Message = { 
+                 role: 'system', 
+                 content: `Termux Output:\n\`\`\`\n${output}\n\`\`\`` 
+             };
+             setMessages(prev => [...prev, outputMsg]);
+          } else {
+             alert(`Execution failed: ${data.error}`);
+          }
+      } catch (e: any) {
+          alert(`Network Error: ${e.message}`);
+      } finally {
+          setIsTermuxRunning(false);
+      }
   };
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || !apiKey) return;
 
-    const userMsg: Message = { role: 'user', content: inputMessage };
+    // Pass context about Termux connection state
+    const contextMsg = termuxConfig.isConnected 
+        ? `[System Note: Termux is CONNECTED. You can execute commands.]`
+        : `[System Note: Termux is NOT connected.]`;
+    
+    // Combine input
+    const fullInput = inputMessage;
+
+    const userMsg: Message = { role: 'user', content: fullInput };
     setMessages(prev => [...prev, userMsg]);
     setInputMessage('');
     setIsLoading(true);
 
     try {
-      const response = await chatWithGroq([...messages, userMsg], apiKey, selectedModel);
+      // Fix: Explicitly type msgsToSend as Message[] to ensure correct type for object literals
+      const msgsToSend: Message[] = [...messages, { role: 'system', content: contextMsg }, userMsg];
+      const response = await chatWithGroq(msgsToSend, apiKey, selectedModel);
       const assistantMsg = response.choices[0].message;
       setMessages(prev => [...prev, assistantMsg]);
     } catch (error: any) {
@@ -152,6 +264,66 @@ const App = () => {
     }
   };
 
+  // --- Message Renderer with Command Detection ---
+  const renderMessageContent = (content: string) => {
+      const cmdRegex = /<<<CMD:(.*?)>>>/g;
+      const parts = content.split(cmdRegex);
+      
+      // If no command, return text
+      if (parts.length === 1) return <div className="whitespace-pre-wrap">{content}</div>;
+
+      return (
+          <div className="whitespace-pre-wrap">
+              {parts.map((part, i) => {
+                  // Even indices are text, Odd indices are commands (because of split)
+                  if (i % 2 === 0) return <span key={i}>{part}</span>;
+                  
+                  const cmd = part.trim();
+                  return (
+                      <div key={i} className="my-3 bg-gray-900 rounded-xl overflow-hidden border border-gray-700 shadow-lg">
+                          <div className="bg-gray-800 px-3 py-2 flex items-center justify-between border-b border-gray-700">
+                              <div className="flex items-center gap-2">
+                                  <Terminal size={14} className="text-green-400" />
+                                  <span className="text-xs text-gray-300 font-mono">Termux Command</span>
+                              </div>
+                          </div>
+                          <div className="p-3 font-mono text-sm text-green-300 bg-black/50 overflow-x-auto">
+                              {cmd}
+                          </div>
+                          <div className="p-2 bg-gray-800 flex justify-end">
+                              <button 
+                                  onClick={() => executeTermuxCommand(cmd)}
+                                  disabled={isTermuxRunning || !termuxConfig.isConnected}
+                                  className={`
+                                    flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide
+                                    transition-all active:scale-95
+                                    ${termuxConfig.isConnected 
+                                        ? 'bg-green-500 text-white hover:bg-green-600 shadow-green-900/20' 
+                                        : 'bg-gray-600 text-gray-400 cursor-not-allowed'}
+                                  `}
+                              >
+                                  {isTermuxRunning ? (
+                                      <span className="animate-pulse">Running...</span>
+                                  ) : (
+                                      <>
+                                          <Play size={12} fill="currentColor" />
+                                          Run on Termux
+                                      </>
+                                  )}
+                              </button>
+                          </div>
+                          {!termuxConfig.isConnected && (
+                             <div className="px-3 pb-2 text-[10px] text-red-400 text-right">
+                                 Termux not connected
+                             </div>
+                          )}
+                      </div>
+                  );
+              })}
+          </div>
+      );
+  };
+
   // --- Views ---
 
   const renderLogin = () => (
@@ -162,7 +334,7 @@ const App = () => {
             <Key className="w-8 h-8 text-ios-blue" />
           </div>
           <h2 className="text-2xl font-bold text-gray-900">Welcome to Groq iOS</h2>
-          <p className="text-gray-500 mt-2">Enter your Groq API key to start using the high-performance AI.</p>
+          <p className="text-gray-500 mt-2">Enter your Groq API key to start.</p>
         </div>
         
         <div className="space-y-4">
@@ -173,18 +345,9 @@ const App = () => {
             type="password"
             label="API Key"
           />
-          <div className="text-xs text-gray-400 px-1">
-            Your key is stored locally on your device and never sent to our servers.
-          </div>
           <IOSButton onClick={handleSaveKey} fullWidth disabled={isLoading}>
             {isLoading ? 'Verifying...' : 'Access App'}
           </IOSButton>
-        </div>
-        
-        <div className="mt-4 pt-4 border-t border-gray-100 text-center">
-          <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-ios-blue text-sm font-medium hover:underline">
-            Get a Groq API Key &rarr;
-          </a>
         </div>
       </IOSCard>
     </div>
@@ -198,25 +361,17 @@ const App = () => {
         </div>
         <h3 className="text-lg font-bold text-gray-900 mb-2">Limit Reached</h3>
         <p className="text-[15px] text-gray-500 leading-relaxed mb-6">
-          Your free API key has reached its usage limit. Please enter a new key to continue chatting.
+          Your free API key has reached its usage limit.
         </p>
-        
         <div className="space-y-3">
           <IOSInput 
             placeholder="New API Key (gsk_...)" 
             value={newRateLimitKey} 
             onChange={(e) => setNewRateLimitKey(e.target.value)} 
             type="password"
-            className="!bg-gray-100/80 text-center placeholder:text-center"
           />
-          <div className="flex flex-col gap-2 mt-4">
-            <IOSButton onClick={handleUpdateRateLimitKey} fullWidth disabled={isLoading}>
-              {isLoading ? 'Verifying...' : 'Update Key'}
-            </IOSButton>
-            <IOSButton variant="ghost" onClick={() => setShowRateLimitModal(false)} fullWidth>
-              Cancel
-            </IOSButton>
-          </div>
+          <IOSButton onClick={handleUpdateRateLimitKey} fullWidth disabled={isLoading}>Update Key</IOSButton>
+          <IOSButton variant="ghost" onClick={() => setShowRateLimitModal(false)} fullWidth>Cancel</IOSButton>
         </div>
       </div>
     </div>
@@ -228,9 +383,16 @@ const App = () => {
       <div className="flex-none p-4 pb-2 bg-ios-bg/80 backdrop-blur-md sticky top-0 z-10 border-b border-gray-200">
         <div className="flex justify-between items-center mb-3">
             <h1 className="text-xl font-bold">Chat</h1>
-            <IOSButton variant="ghost" className="!p-2" onClick={() => setMessages([messages[0]])}>
-                <Trash2 className="w-5 h-5" />
-            </IOSButton>
+            <div className="flex gap-2">
+                 {termuxConfig.isConnected && (
+                     <div className="bg-green-100 text-green-700 p-2 rounded-lg" title="Termux Connected">
+                         <Terminal size={20} />
+                     </div>
+                 )}
+                <IOSButton variant="ghost" className="!p-2" onClick={() => setMessages([messages[0]])}>
+                    <Trash2 className="w-5 h-5" />
+                </IOSButton>
+            </div>
         </div>
         <IOSSegmentedControl 
           options={GROQ_MODELS.map(m => ({ label: formatModelName(m), value: m }))}
@@ -241,16 +403,17 @@ const App = () => {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
-        {messages.filter(m => m.role !== 'system').map((msg, idx) => (
+        {messages.filter(m => m.role !== 'system' || m.content.startsWith('Termux')).map((msg, idx) => (
           <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div className={`
-              max-w-[85%] p-3.5 rounded-2xl text-[15px] leading-relaxed shadow-sm
+              max-w-[90%] md:max-w-[75%] p-3.5 rounded-2xl text-[15px] leading-relaxed shadow-sm overflow-hidden
               ${msg.role === 'user' 
                 ? 'bg-ios-blue text-white rounded-tr-sm' 
-                : 'bg-white text-gray-800 rounded-tl-sm border border-gray-100'}
-              ${msg.content.includes('Rate limit exceeded') ? 'border-red-200 bg-red-50 text-red-600' : ''}
+                : msg.content.startsWith('Termux Output')
+                  ? 'bg-gray-800 text-gray-200 font-mono text-xs w-full'
+                  : 'bg-white text-gray-800 rounded-tl-sm border border-gray-100'}
             `}>
-              {msg.content}
+              {msg.role === 'assistant' ? renderMessageContent(msg.content) : msg.content}
             </div>
           </div>
         ))}
@@ -271,7 +434,7 @@ const App = () => {
         <div className="flex gap-2 items-end max-w-4xl mx-auto">
           <textarea
             className="flex-1 bg-gray-100 rounded-2xl px-4 py-3 max-h-32 min-h-[44px] resize-none focus:outline-none focus:ring-2 focus:ring-ios-blue/20"
-            placeholder="Type a message..."
+            placeholder={termuxConfig.isConnected ? "Ask AI to run a Termux command..." : "Type a message..."}
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyDown={(e) => {
@@ -294,21 +457,76 @@ const App = () => {
     </div>
   );
 
+  const renderTermuxConfig = () => (
+      <div className="p-4 h-full overflow-y-auto">
+          <h1 className="text-2xl font-bold mb-2">Termux Connection</h1>
+          <p className="text-gray-500 mb-6 text-sm">
+              Connect your Termux environment to Groq AI. Ensure the Python bridge script is running in Termux.
+          </p>
+
+          <IOSCard className="space-y-4 mb-6">
+              <div className="flex items-center gap-3 pb-4 border-b border-gray-100">
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${termuxConfig.isConnected ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'}`}>
+                      <Terminal size={24} />
+                  </div>
+                  <div>
+                      <h3 className="font-semibold text-gray-900">Connection Status</h3>
+                      <p className={`text-sm ${termuxConfig.isConnected ? 'text-green-600 font-medium' : 'text-gray-400'}`}>
+                          {termuxConfig.isConnected ? 'Connected & Ready' : 'Disconnected'}
+                      </p>
+                  </div>
+              </div>
+
+              <div className="space-y-4">
+                  <IOSInput 
+                      label="Public Ngrok URL"
+                      placeholder="https://xxxx-xx-xx.ngrok-free.app"
+                      value={termuxConfig.url}
+                      onChange={(e) => setTermuxConfig({...termuxConfig, url: e.target.value})}
+                  />
+                  <IOSInput 
+                      label="Access Token (from Python script)"
+                      placeholder="e.g. a1b2c3d4..."
+                      type="password"
+                      value={termuxConfig.token}
+                      onChange={(e) => setTermuxConfig({...termuxConfig, token: e.target.value})}
+                  />
+                  <IOSButton onClick={saveTermuxConfig} disabled={isTermuxRunning}>
+                      {isTermuxRunning ? 'Connecting...' : (termuxConfig.isConnected ? 'Update Connection' : 'Connect')}
+                  </IOSButton>
+              </div>
+          </IOSCard>
+
+          <IOSCard>
+              <h3 className="font-semibold mb-2 flex items-center gap-2">
+                  <LinkIcon size={16} /> How to Connect
+              </h3>
+              <ol className="text-sm text-gray-600 space-y-2 list-decimal list-inside">
+                  <li>Open Termux on your Android device.</li>
+                  <li>Install Python: <code className="bg-gray-100 px-1 rounded">pkg install python</code></li>
+                  <li>Install libs: <code className="bg-gray-100 px-1 rounded">pip install flask pyngrok</code></li>
+                  <li>Run the Python Bridge script provided by the AI.</li>
+                  <li>Copy the <b>URL</b> and <b>Token</b> generated by the script into the fields above.</li>
+              </ol>
+          </IOSCard>
+      </div>
+  );
+
   const renderApiStatus = () => (
     <div className="p-4 space-y-6 overflow-y-auto h-full pb-24">
+      {/* Existing API Status Code... keeping it same but abbreviated for this update */}
       <div className="flex justify-between items-center mb-2">
         <h1 className="text-2xl font-bold">API Status</h1>
         <div className="flex items-center gap-2 px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">
-          <span className="relative flex h-2 w-2">
+           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
           </span>
           All Systems Operational
         </div>
       </div>
-
-      {/* Real-time Latency Chart */}
-      <IOSCard className="h-64 flex flex-col">
+       {/* Real-time Latency Chart */}
+       <IOSCard className="h-64 flex flex-col">
         <div className="flex justify-between items-center mb-4">
             <h3 className="font-semibold text-gray-700 flex items-center gap-2">
                 <Activity className="w-5 h-5 text-ios-blue" />
@@ -336,7 +554,6 @@ const App = () => {
             </ResponsiveContainer>
         </div>
       </IOSCard>
-
       {/* Endpoints List */}
       <h3 className="font-semibold text-gray-500 text-sm uppercase tracking-wider ml-1">Public Endpoints</h3>
       <div className="space-y-3">
@@ -363,26 +580,6 @@ const App = () => {
             </IOSCard>
         ))}
       </div>
-
-       <IOSCard className="mt-4">
-        <h3 className="font-semibold text-gray-800 mb-2">Usage Directory</h3>
-        <p className="text-sm text-gray-500 mb-4">
-            To access the AI programmatically, use the following endpoint structure with your authenticated client.
-        </p>
-        <div className="bg-gray-900 rounded-lg p-3 overflow-x-auto">
-            <code className="text-xs text-green-400 font-mono">
-                POST /api/call<br/>
-                Host: groq-ios-client.vercel.app<br/>
-                Authorization: Bearer YOUR_KEY<br/>
-                Content-Type: application/json<br/>
-                <br/>
-                {'{'}<br/>
-                &nbsp;&nbsp;"model": "{selectedModel}",<br/>
-                &nbsp;&nbsp;"messages": [...]<br/>
-                {'}'}
-            </code>
-        </div>
-       </IOSCard>
     </div>
   );
 
@@ -390,7 +587,7 @@ const App = () => {
     <div className="p-4 h-full">
       <h1 className="text-2xl font-bold mb-6">Settings</h1>
       
-      <IOSCard className="space-y-0 !p-0 overflow-hidden">
+      <IOSCard className="space-y-0 !p-0 overflow-hidden mb-6">
         <div className="p-4 flex items-center justify-between border-b border-gray-100">
             <div className="flex items-center gap-3">
                 <div className="bg-blue-500 p-1.5 rounded-md text-white">
@@ -413,20 +610,28 @@ const App = () => {
                 ••••••••{apiKey.slice(-4)} <ChevronRight size={16} />
             </span>
         </div>
+        {/* Termux Shortcut in Settings */}
+         <div className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors" onClick={() => setCurrentView(AppView.TERMUX)}>
+            <div className="flex items-center gap-3">
+                <div className="bg-black p-1.5 rounded-md text-white">
+                    <Terminal size={18} />
+                </div>
+                <span className="text-gray-900 font-medium">Termux Connection</span>
+            </div>
+            <span className={`text-sm flex items-center ${termuxConfig.isConnected ? 'text-green-500' : 'text-gray-400'}`}>
+                {termuxConfig.isConnected ? 'Connected' : 'Not Connected'} <ChevronRight size={16} />
+            </span>
+        </div>
       </IOSCard>
 
       <div className="mt-8">
         <IOSButton variant="danger" fullWidth onClick={handleLogout}>
             Remove API Key & Logout
         </IOSButton>
-        <p className="text-center text-gray-400 text-xs mt-3">
-            Removing the key will require you to enter it again to access the chat features.
-        </p>
       </div>
-
+      
        <div className="mt-8 text-center">
-         <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Version 1.0.3</p>
-         <p className="text-xs text-gray-300 mt-1">Deployed on Vercel</p>
+         <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Version 1.1.0 (Termux Support)</p>
        </div>
     </div>
   );
@@ -440,7 +645,6 @@ const App = () => {
   return (
     <div className="h-screen w-full flex flex-col md:flex-row bg-ios-bg text-gray-900 overflow-hidden font-sans relative">
       
-      {/* Rate Limit Modal Overlay */}
       {showRateLimitModal && renderRateLimitModal()}
 
       {/* Sidebar (Desktop) / Bottom Nav (Mobile) */}
@@ -463,6 +667,12 @@ const App = () => {
             label="Chat"
         />
         <NavButton 
+            active={currentView === AppView.TERMUX} 
+            onClick={() => setCurrentView(AppView.TERMUX)}
+            icon={<Terminal size={24} />}
+            label="Termux"
+        />
+        <NavButton 
             active={currentView === AppView.API_INFO} 
             onClick={() => setCurrentView(AppView.API_INFO)}
             icon={<Server size={24} />}
@@ -479,6 +689,7 @@ const App = () => {
       {/* Main Content Area */}
       <div className="flex-1 h-full overflow-hidden relative pb-20 md:pb-0">
         {currentView === AppView.CHAT && renderChat()}
+        {currentView === AppView.TERMUX && renderTermuxConfig()}
         {currentView === AppView.API_INFO && renderApiStatus()}
         {currentView === AppView.SETTINGS && renderSettings()}
       </div>

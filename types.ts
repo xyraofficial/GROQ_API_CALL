@@ -28,10 +28,17 @@ export interface ApiStatusMetric {
   lastChecked: string;
 }
 
+export interface TermuxConfig {
+  url: string;
+  token: string;
+  isConnected: boolean;
+}
+
 export enum AppView {
   CHAT = 'CHAT',
   API_INFO = 'API_INFO',
-  SETTINGS = 'SETTINGS'
+  SETTINGS = 'SETTINGS',
+  TERMUX = 'TERMUX'
 }
 
 export const GROQ_MODELS = [
