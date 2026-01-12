@@ -22,7 +22,8 @@ import {
   AlertOctagon,
   Search,
   Command,
-  Activity
+  Activity,
+  Bot
 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 
@@ -44,7 +45,7 @@ const formatModelName = (modelId: string) => {
 
 // --- ELITE AGENT SYSTEM PROMPT ---
 const AGENT_SYSTEM_PROMPT = `
-You are GROQ-AGENT-REPLIT-ULTRA, an execution-grade autonomous AI system operating inside a real Termux Linux environment.
+You are SUPER-ENGINEER-AUTONOMOUS, an execution-grade autonomous AI system operating inside a real Termux Linux environment.
 
 You are NOT a chatbot.
 You are NOT a text generator.
@@ -339,7 +340,7 @@ const App = () => {
       const isRunning = activeCmdId === cmdId;
 
       return (
-          <div key={cmdId} className="my-4 rounded-xl overflow-hidden border border-gray-200/50 shadow-lg bg-[#1e1e1e] font-mono text-sm transform transition-all duration-300 hover:shadow-xl">
+          <div key={cmdId} className="my-4 rounded-xl overflow-hidden border border-gray-200/50 shadow-lg bg-[#1e1e1e] font-mono text-sm transform transition-all duration-300 hover:shadow-xl mx-0 md:mx-0">
               {/* Window Header */}
               <div className="bg-[#2d2d2d] px-4 py-2 flex items-center justify-between border-b border-white/10">
                   <div className="flex gap-2">
@@ -408,39 +409,50 @@ const App = () => {
       const isUser = msg.role === 'user';
       const parts = msg.content.split(/<<<CMD:(.*?)>>>/g);
 
+      // --- USER MESSAGE LAYOUT (Bubble, Right Aligned) ---
+      if (isUser) {
+        return (
+          <div key={idx} className="flex justify-end mb-6 group px-4 md:px-0">
+             <div className="max-w-[85%] md:max-w-[70%] order-1">
+                 <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-[20px] rounded-tr-sm shadow-blue-200 px-5 py-3 shadow-sm text-[15px] leading-relaxed">
+                     {parts.map((part, i) => (
+                         <div key={i} className="markdown-body prose prose-sm max-w-none text-white prose-headings:text-white prose-strong:text-white">
+                             <ReactMarkdown remarkPlugins={[remarkGfm]}>{part}</ReactMarkdown>
+                         </div>
+                     ))}
+                 </div>
+                 <div className="text-[10px] text-gray-400 mt-1 px-1 text-right opacity-0 group-hover:opacity-100 transition-opacity">
+                     Sent
+                 </div>
+             </div>
+          </div>
+        );
+      }
+
+      // --- AGENT MESSAGE LAYOUT (Full Width, No Bubble, Transparent) ---
       return (
-          <div key={idx} className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-6 group`}>
-              {!isUser && (
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-gray-900 to-gray-700 flex items-center justify-center text-white shadow-lg mr-3 mt-1 shrink-0">
-                      <Zap size={14} fill="currentColor" />
-                  </div>
-              )}
+          <div key={idx} className="flex flex-col mb-8 w-full group animate-fade-in-up">
+              {/* Agent Header */}
+              <div className="flex items-center gap-2 mb-2 px-4 md:px-0">
+                   <div className="w-5 h-5 rounded-md bg-black flex items-center justify-center">
+                      <Zap size={12} className="text-white" fill="currentColor"/>
+                   </div>
+                   <span className="text-[11px] font-bold text-gray-900 tracking-wider uppercase">Super Engineer</span>
+              </div>
               
-              <div className={`max-w-[90%] md:max-w-[80%] ${isUser ? 'order-1' : 'order-2'}`}>
-                  {/* Bubble */}
-                  <div className={`
-                      px-5 py-4 shadow-sm text-[15px] leading-relaxed relative
-                      ${isUser 
-                          ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-[20px] rounded-tr-md shadow-blue-200' 
-                          : 'bg-white/80 backdrop-blur-md border border-gray-100/50 text-gray-800 rounded-[20px] rounded-tl-md shadow-ios'}
-                  `}>
-                      {parts.map((part, i) => {
-                          if (i % 2 === 0) {
-                              if (!part.trim()) return null;
-                              return (
-                                  <div key={i} className={`markdown-body prose prose-sm max-w-none ${isUser ? 'text-white prose-headings:text-white prose-strong:text-white' : 'text-gray-800'}`}>
-                                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{part}</ReactMarkdown>
-                                  </div>
-                              );
-                          }
-                          return renderTerminalBlock(part.trim(), `cmd-${idx}-${i}`);
-                      })}
-                  </div>
-                  
-                  {/* Timestamp / Status */}
-                  <div className={`text-[10px] text-gray-400 mt-1 px-1 opacity-0 group-hover:opacity-100 transition-opacity ${isUser ? 'text-right' : 'text-left'}`}>
-                      {isUser ? 'Sent' : 'Agent • Llama 3'}
-                  </div>
+              {/* Content - Full Width Mobile */}
+              <div className="w-full text-[15px] leading-relaxed text-gray-800 px-4 md:px-0">
+                  {parts.map((part, i) => {
+                      if (i % 2 === 0) {
+                          if (!part.trim()) return null;
+                          return (
+                              <div key={i} className="markdown-body prose prose-sm max-w-none text-gray-800 prose-pre:bg-[#1e1e1e] prose-pre:rounded-xl prose-pre:border prose-pre:border-gray-200">
+                                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{part}</ReactMarkdown>
+                              </div>
+                          );
+                      }
+                      return renderTerminalBlock(part.trim(), `cmd-${idx}-${i}`);
+                  })}
               </div>
           </div>
       );
@@ -538,22 +550,26 @@ const App = () => {
               {currentView === AppView.CHAT && (
                   <div className="flex flex-col h-full">
                       {/* Chat Messages */}
-                      <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-2 no-scrollbar pb-32">
+                      <div className="flex-1 overflow-y-auto pt-4 pb-32 no-scrollbar">
                           {messages.length === 1 && (
-                              <div className="flex flex-col items-center justify-center h-[60vh] opacity-50 animate-fade-in-up">
+                              <div className="flex flex-col items-center justify-center h-[60vh] opacity-50 animate-fade-in-up px-6">
                                   <div className="w-24 h-24 bg-gradient-to-tr from-gray-200 to-white rounded-[32px] flex items-center justify-center mb-6 shadow-ios border border-white">
-                                      <Zap size={40} className="text-gray-400" fill="currentColor" />
+                                      <Bot size={40} className="text-gray-400" />
                                   </div>
-                                  <h3 className="text-2xl font-bold text-gray-800 mb-2">Agent Ready</h3>
+                                  <h3 className="text-2xl font-bold text-gray-800 mb-2">Agent Active</h3>
                                   <p className="text-gray-500 max-w-xs text-center text-sm">
-                                      Full-stack capabilities authorized. <br/> Connected to Termux environment.
+                                      Super Engineer Mode. <br/> Ready for autonomous execution.
                                   </p>
                               </div>
                           )}
-                          {messages.map((m, i) => renderMessage(m, i))}
+                          
+                          <div className="md:px-8">
+                             {messages.map((m, i) => renderMessage(m, i))}
+                          </div>
+
                           {isLoading && (
-                              <div className="flex items-center gap-2 text-gray-400 text-xs ml-4 animate-pulse">
-                                  <Loader2 size={12} className="animate-spin" /> Agent is analyzing...
+                              <div className="flex items-center gap-2 text-gray-400 text-xs ml-4 animate-pulse mb-6">
+                                  <Loader2 size={12} className="animate-spin" /> Thinking...
                               </div>
                           )}
                           <div ref={messagesEndRef} />
@@ -566,7 +582,7 @@ const App = () => {
                                   value={inputMessage}
                                   onChange={(e) => setInputMessage(e.target.value)}
                                   onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendMessage())}
-                                  placeholder={termuxConfig.isConnected ? "Instruct agent (e.g., 'Check git status')..." : "Ask a question..."}
+                                  placeholder={termuxConfig.isConnected ? "Instruct agent..." : "Type instruction..."}
                                   className="flex-1 bg-transparent border-none focus:ring-0 resize-none max-h-32 min-h-[48px] py-3 px-4 text-gray-800 placeholder-gray-400 text-[15px]"
                                   rows={1}
                               />
