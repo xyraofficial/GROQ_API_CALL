@@ -22,7 +22,8 @@ import {
   Loader2,
   ChevronDown,
   ChevronUp,
-  Code
+  Code,
+  Zap
 } from 'lucide-react';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 
@@ -44,38 +45,51 @@ const formatModelName = (modelId: string) => {
   return modelId;
 };
 
-// --- Termux System Instruction (SMARTER & ACCURATE) ---
+// --- Termux System Instruction (ADVANCED & SMART) ---
 const TERMUX_SYSTEM_PROMPT = `
-You are "Groq-OS", an elite AI System Engineer for Termux.
+You are **Groq-OS**, an advanced AI Shell Assistant for Termux.
 
-**MANDATORY RULES:**
+**CORE BEHAVIORS:**
 
-1.  **NO PLACEHOLDERS:** NEVER output "your_command_here". ALWAYS generate the ACTUAL command needed.
-    *   BAD: <<<CMD: your_command_here >>>
-    *   GOOD: <<<CMD: ls -la >>>
+1.  **PROTOCOL (Explanation vs. Action):**
+    *   **User asks "How to...":** Explain the concept/steps clearly in Markdown. Do NOT generate a run-able command block yet. Ask: "Shall I execute this for you?"
+    *   **User says "Yes/Run it/Do it":** Generate the command block immediately.
+    *   **User gives direct order ("List files", "Install git"):** Generate the command block immediately.
 
-2.  **SMART DELETION:**
-    *   If the user asks to delete a file or folder (e.g., "hapus createdbykztutorial"), ALWAYS use \`rm -rf\` to handle both files and directories without errors.
-    *   If the user's filename is likely a typo or approximation, correct it or use a wildcard if safe.
-    *   Example: User "hapus createdby", you generate: <<<CMD: rm -rf createdby* >>> (if safe) or <<<CMD: rm -rf createdby >>>
+2.  **COMMAND FORMAT:**
+    *   Wrap executable commands EXACTLY like this:
+    <<<CMD: your_command_here >>>
 
-3.  **COMMAND FORMAT:**
-    *   Wrap commands EXACTLY in: <<<CMD: actual_command_string >>>
+3.  **ADVANCED FILE OPERATIONS:**
+    *   **Delete (Smart Mode):** If user says "delete createdbykztutorial", and you suspect case sensitivity issues, use wildcards or case-insensitive matching if possible. 
+        *   *Scenario:* User: "hapus file createdbykztutorial" -> You: "I'll remove the file matching that name." -> CMD: \`rm -rf *createdbykztutorial*\` or \`find . -iname "*createdbykztutorial*" -delete\`.
+    *   **Create/Edit:** Use \`echo "content" > file.txt\` or \`printf\` for simple files.
+    *   **Analyze:** Use \`cat filename\` or \`head filename\`.
+    *   **System:** You can run \`pkg install\`, \`top\`, \`neofetch\`, etc.
 
-4.  **RESPONSE STYLE:**
-    *   For questions ("How to..."), answer in Markdown text.
-    *   For tasks ("Check git", "Install python"), provide the CMD block immediately.
-    *   Keep it concise. No yapping.
+4.  **POST-EXECUTION ANALYSIS:**
+    *   The system will feed the command output back to you.
+    *   **CRITICAL:** When you see the output, **summarize it in natural language** in the chat. Don't just repeat the output.
+    *   *Example:* Output shows "git version 2.45". You say: "Git is successfully installed (v2.45)."
+
+5.  **PERSONALITY:**
+    *   Professional, efficient, "Hacker" aesthetic text.
+    *   Keep responses concise.
 
 **SCENARIOS:**
 
-User: "Cek git"
-You: "Checking git version..."
-<<<CMD: git --version >>>
+User: "Cara install python"
+You: "To install Python, we use the package manager. **Would you like me to run the installer?**"
 
-User: "Hapus folder tutorial"
-You: "Deleting folder 'tutorial'..."
-<<<CMD: rm -rf tutorial >>>
+User: "Yes"
+You: "Executing installation..."
+<<<CMD: pkg install python -y >>>
+
+User: "Cek versi"
+You: "Checking..."
+<<<CMD: python --version >>>
+(System returns output)
+You: "It looks like Python 3.11 is currently active."
 `;
 
 const App = () => {
@@ -130,7 +144,7 @@ const App = () => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, activeCmdId, cmdResults]);
+  }, [messages, activeCmdId, cmdResults, isLoading]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -185,6 +199,11 @@ const App = () => {
     setMessages([{ role: 'system', content: TERMUX_SYSTEM_PROMPT }]);
   };
 
+  const handleClearChat = () => {
+      setMessages([{ role: 'system', content: TERMUX_SYSTEM_PROMPT }]);
+      setCmdResults({});
+  };
+
   // --- Termux Logic (Smart Version) ---
 
   const saveTermuxConfig = async () => {
@@ -229,10 +248,10 @@ const App = () => {
       setActiveCmdId(cmdId);
       
       // Smart Animation Sequence
-      const steps = ['Working...', 'Processing...', 'Executing...'];
+      const steps = ['Init...', 'Sending...', 'Exec...'];
       for (const step of steps) {
           setExecutionStep(step);
-          await new Promise(resolve => setTimeout(resolve, 300)); 
+          await new Promise(resolve => setTimeout(resolve, 200)); 
       }
 
       try {
@@ -247,31 +266,23 @@ const App = () => {
           });
           
           const data = await res.json();
+          const output = data.stdout || data.stderr || "Command executed successfully (No Output).";
           
-          setExecutionStep('Fetching Output...');
-          await new Promise(resolve => setTimeout(resolve, 200));
+          setCmdResults(prev => ({
+              ...prev,
+              [cmdId]: { 
+                  success: res.ok, 
+                  output: output,
+                  timestamp: new Date().toLocaleTimeString()
+              }
+          }));
 
+          // --- SMART AI FOLLOW UP ---
+          // Send the output back to the AI invisibly
           if (res.ok) {
-             const output = data.stdout || data.stderr || "Command executed successfully.";
-             
-             setCmdResults(prev => ({
-                 ...prev,
-                 [cmdId]: { 
-                     success: true, 
-                     output: output,
-                     timestamp: new Date().toLocaleTimeString()
-                 }
-             }));
-          } else {
-             setCmdResults(prev => ({
-                 ...prev,
-                 [cmdId]: { 
-                     success: false, 
-                     output: `Error: ${data.error}`,
-                     timestamp: new Date().toLocaleTimeString()
-                 }
-             }));
+              await handleAiFollowUp(cmd, output);
           }
+
       } catch (e: any) {
           setCmdResults(prev => ({
                  ...prev,
@@ -287,23 +298,47 @@ const App = () => {
       }
   };
 
+  const handleAiFollowUp = async (cmd: string, output: string) => {
+      setIsLoading(true);
+      // Construct a system message representing the terminal output
+      const systemResultMsg: Message = { 
+          role: 'system', 
+          content: `[SYSTEM OUTPUT for command '${cmd}']: ${output}\n\nAnalyze this output and summarize it for the user briefly.` 
+      };
+      
+      const newHistory = [...messages, systemResultMsg];
+      
+      // We don't necessarily need to add the huge output to the UI state 'messages' 
+      // (to keep chat clean), but we pass it to the API.
+      // However, to keep context for future, we should probably add a condensed version or just handle the response.
+      
+      try {
+          const response = await chatWithGroq(newHistory, apiKey, selectedModel);
+          const assistantMsg = response.choices[0].message;
+          setMessages(prev => [...prev, assistantMsg]);
+      } catch (e) {
+          console.error("AI Follow up failed", e);
+      } finally {
+          setIsLoading(false);
+      }
+  };
+
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || !apiKey) return;
 
     // Pass context about Termux connection state
     const contextMsg = termuxConfig.isConnected 
-        ? `[System Note: Termux is CONNECTED. User can run commands.]`
-        : `[System Note: Termux is NOT connected.]`;
+        ? `[System Note: Termux is CONNECTED. You can generate commands.]`
+        : `[System Note: Termux is NOT connected. Do not generate commands yet.]`;
     
-    // Combine input
-    const fullInput = inputMessage;
-
-    const userMsg: Message = { role: 'user', content: fullInput };
+    const userMsg: Message = { role: 'user', content: inputMessage };
     setMessages(prev => [...prev, userMsg]);
     setInputMessage('');
     setIsLoading(true);
 
     try {
+      // Filter out 'System Output' messages from visual history if we want to save tokens, 
+      // but here we keep them for context unless they are too huge.
       const msgsToSend: Message[] = [...messages, { role: 'system', content: contextMsg }, userMsg];
       const response = await chatWithGroq(msgsToSend, apiKey, selectedModel);
       const assistantMsg = response.choices[0].message;
@@ -320,7 +355,7 @@ const App = () => {
     }
   };
 
-  // --- Message Renderer with Smart Command Blocks ---
+  // --- Message Renderer with Redesigned Terminal ---
   const renderMessageContent = (content: string, msgIndex: number, role: 'user' | 'assistant' | 'system') => {
       const cmdRegex = /<<<CMD:(.*?)>>>/g;
       const parts = content.split(cmdRegex);
@@ -341,7 +376,7 @@ const App = () => {
                   if (i % 2 === 0) {
                       if (!part.trim()) return null;
                       return (
-                          <div key={i} className={`markdown-body prose mb-3 ${role === 'user' ? 'user-msg text-white' : 'text-gray-800'}`}>
+                          <div key={i} className={`markdown-body prose mb-2 ${role === 'user' ? 'user-msg text-white' : 'text-gray-800'}`}>
                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{part}</ReactMarkdown>
                           </div>
                       );
@@ -352,79 +387,62 @@ const App = () => {
                   const cmdId = `cmd-${msgIndex}-${i}`;
                   const isRunning = activeCmdId === cmdId;
                   const result = cmdResults[cmdId];
-                  // No specific 'isLogsOpen' state needed anymore, we show result by default.
 
+                  // --- NEW TERMINAL UI ---
                   return (
-                      <div key={cmdId} className="my-2 rounded-xl overflow-hidden shadow-lg border border-gray-700 bg-gray-900 w-full max-w-full">
+                      <div key={cmdId} className="my-3 rounded-lg overflow-hidden border border-gray-200 bg-white shadow-sm w-full font-mono text-sm">
                           
-                          {/* Header */}
-                          <div className="bg-gray-800 px-3 py-2 flex items-center justify-between border-b border-gray-700">
-                              <div className="flex items-center gap-2">
-                                  <div className={`w-2 h-2 rounded-full ${isRunning ? 'bg-yellow-400 animate-pulse' : 'bg-green-500'}`}></div>
-                                  <span className="text-[10px] text-gray-300 font-mono font-bold tracking-wider">GROQ-OS</span>
+                          {/* Command Strip */}
+                          <div className="flex items-stretch">
+                              <div className="bg-gray-900 text-gray-400 px-3 py-3 flex items-center select-none">
+                                  $
                               </div>
-                              {result && (
-                                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${result.success ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}`}>
-                                      {result.success ? 'DONE' : 'FAIL'}
-                                  </span>
-                              )}
-                          </div>
-
-                          {/* Command Display */}
-                          <div className="p-3 bg-black/80 font-mono text-sm text-green-400 overflow-x-auto whitespace-nowrap border-l-4 border-green-600">
-                              <span className="text-gray-500 mr-2 select-none">$</span>{cmd}
-                          </div>
-
-                          {/* Action Bar or Result Area */}
-                          {result ? (
-                             // RESULT DISPLAY (Immediate, no buttons)
-                             <div className="border-t border-gray-700 animate-fade-in-down bg-black/95">
-                                 <div className="p-3 font-mono text-xs text-gray-200 overflow-x-auto max-h-80 whitespace-pre-wrap scrollbar-thin scrollbar-thumb-gray-700">
-                                     {result.output}
-                                 </div>
-                             </div>
-                          ) : (
-                              // ACTION BUTTONS (Before Run)
-                              <div className="p-2 bg-gray-800 border-t border-gray-700 flex justify-between items-center">
-                                  <div className="flex-1 px-2">
-                                      {isRunning ? (
-                                          <div className="flex items-center gap-2 text-xs text-blue-300 font-mono animate-pulse">
-                                              <Loader2 size={12} className="animate-spin" />
-                                              {executionStep}
-                                          </div>
-                                      ) : (
-                                          <span className="text-[10px] text-gray-500 uppercase tracking-widest">Ready</span>
-                                      )}
-                                  </div>
-
+                              <div className="flex-1 bg-gray-50 text-gray-800 px-3 py-3 overflow-x-auto whitespace-nowrap flex items-center">
+                                  {cmd}
+                              </div>
+                              
+                              {/* Action Button Area */}
+                              <div className="bg-gray-50 border-l border-gray-200">
                                   {isRunning ? (
-                                      <div className="bg-gray-700 text-gray-400 px-3 py-1 rounded-md text-[10px] font-bold">
-                                          ...
+                                      <button disabled className="h-full px-4 flex items-center justify-center bg-gray-100 text-blue-600">
+                                          <Loader2 size={16} className="animate-spin" />
+                                      </button>
+                                  ) : result ? (
+                                      <div className={`h-full px-4 flex items-center justify-center ${result.success ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'}`}>
+                                          {result.success ? <Check size={18} /> : <XCircle size={18} />}
                                       </div>
                                   ) : (
                                       <button 
                                           onClick={() => executeTermuxCommandSmart(cmd, cmdId)}
                                           disabled={!termuxConfig.isConnected}
-                                          className={`
-                                            flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide
-                                            transition-all active:scale-95 shadow-lg
+                                          className={`h-full px-4 flex items-center justify-center transition-colors font-bold tracking-wider text-xs uppercase
                                             ${termuxConfig.isConnected 
-                                                ? 'bg-blue-600 text-white hover:bg-blue-500 shadow-blue-900/20' 
-                                                : 'bg-gray-700 text-gray-500 cursor-not-allowed'}
+                                                ? 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800' 
+                                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'}
                                           `}
                                       >
-                                          <Play size={10} fill="currentColor" />
                                           RUN
                                       </button>
                                   )}
                               </div>
-                          )}
-
-                          {!termuxConfig.isConnected && !result && (
-                             <div className="bg-red-900/20 py-1 px-3 text-[10px] text-red-400 text-center border-t border-red-900/30">
-                                 Termux Disconnected
+                          </div>
+                          
+                          {/* Minimalist Status Bar / Execution Text */}
+                          {isRunning && (
+                             <div className="bg-blue-50/50 px-3 py-1 text-[10px] text-blue-500 flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></span>
+                                Executing via Termux ({executionStep})
                              </div>
                           )}
+
+                          {/* Result View (Only if error or explicitly requested, but usually AI handles output) */}
+                          {result && !result.success && (
+                             <div className="bg-red-50 border-t border-red-100 p-2 text-xs text-red-600 whitespace-pre-wrap">
+                                 {result.output}
+                             </div>
+                          )}
+                          
+                          {/* Note: We hide success output because AI will read it and summarize it in the NEXT message */}
                       </div>
                   );
               })}
@@ -485,19 +503,46 @@ const App = () => {
     </div>
   );
 
+  const renderWelcomeScreen = () => (
+      <div className="flex flex-col items-center justify-center h-full text-center px-6 opacity-60">
+          <div className="w-20 h-20 bg-gray-200 rounded-3xl flex items-center justify-center mb-6 shadow-sm">
+              <Code size={40} className="text-gray-500" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">Groq-OS Shell</h2>
+          <p className="text-sm text-gray-500 max-w-xs mb-8">
+              Advanced AI Assistant for Termux.<br/>Capable of file management, system analysis, and script execution.
+          </p>
+          <div className="grid grid-cols-2 gap-3 w-full max-w-sm">
+              <button onClick={() => setInputMessage("Check Termux version")} className="bg-white p-3 rounded-xl shadow-sm text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+                  Check System
+              </button>
+              <button onClick={() => setInputMessage("List files in current folder")} className="bg-white p-3 rounded-xl shadow-sm text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+                  List Files
+              </button>
+              <button onClick={() => setInputMessage("Create a hello world python script")} className="bg-white p-3 rounded-xl shadow-sm text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+                  Create Script
+              </button>
+              <button onClick={() => setInputMessage("How to install git?")} className="bg-white p-3 rounded-xl shadow-sm text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+                  Install Help
+              </button>
+          </div>
+      </div>
+  );
+
   const renderChat = () => (
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex-none p-4 pb-2 bg-ios-bg/80 backdrop-blur-md sticky top-0 z-10 border-b border-gray-200">
         <div className="flex justify-between items-center mb-3">
-            <h1 className="text-xl font-bold">Chat</h1>
+            <h1 className="text-xl font-bold">Groq-OS</h1>
             <div className="flex gap-2">
                  {termuxConfig.isConnected && (
-                     <div className="bg-green-100 text-green-700 p-2 rounded-lg animate-pulse" title="Termux Connected">
-                         <Terminal size={20} />
+                     <div className="bg-green-100 text-green-700 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1">
+                         <Zap size={12} fill="currentColor" />
+                         ONLINE
                      </div>
                  )}
-                <IOSButton variant="ghost" className="!p-2" onClick={() => setMessages([messages[0]])}>
+                <IOSButton variant="ghost" className="!p-2 text-gray-500 hover:text-red-500" onClick={handleClearChat}>
                     <Trash2 className="w-5 h-5" />
                 </IOSButton>
             </div>
@@ -511,18 +556,25 @@ const App = () => {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
-        {messages.filter(m => m.role !== 'system' || !m.content.startsWith('Termux Output')).map((msg, idx) => (
-          <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`
-              max-w-[95%] md:max-w-[85%] p-3.5 rounded-2xl text-[15px] leading-relaxed shadow-sm overflow-hidden
-              ${msg.role === 'user' 
-                ? 'bg-ios-blue text-white rounded-tr-sm' 
-                : 'bg-white text-gray-800 rounded-tl-sm border border-gray-100'}
-            `}>
-              {msg.role === 'assistant' ? renderMessageContent(msg.content, idx, msg.role) : renderMessageContent(msg.content, idx, msg.role)}
-            </div>
-          </div>
-        ))}
+        {messages.length <= 1 ? renderWelcomeScreen() : (
+            messages.filter(m => m.role !== 'system' || m.content.startsWith('[SYSTEM OUTPUT')).map((msg, idx) => {
+                // Hide system output messages from view, AI reads them silently
+                if (msg.role === 'system' && msg.content.startsWith('[SYSTEM OUTPUT')) return null;
+
+                return (
+                    <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}>
+                        <div className={`
+                        max-w-[95%] md:max-w-[85%] p-3.5 rounded-2xl text-[15px] leading-relaxed shadow-sm overflow-hidden
+                        ${msg.role === 'user' 
+                            ? 'bg-ios-blue text-white rounded-tr-sm' 
+                            : 'bg-white text-gray-800 rounded-tl-sm border border-gray-100'}
+                        `}>
+                        {renderMessageContent(msg.content, idx, msg.role)}
+                        </div>
+                    </div>
+                );
+            })
+        )}
         {isLoading && (
             <div className="flex justify-start">
                  <div className="bg-white p-4 rounded-2xl rounded-tl-sm border border-gray-100 shadow-sm flex gap-1">
@@ -540,7 +592,7 @@ const App = () => {
         <div className="flex gap-2 items-end max-w-4xl mx-auto">
           <textarea
             className="flex-1 bg-gray-100 rounded-2xl px-4 py-3 max-h-32 min-h-[44px] resize-none focus:outline-none focus:ring-2 focus:ring-ios-blue/20"
-            placeholder={termuxConfig.isConnected ? "Ask Groq-OS to execute command..." : "Type a message..."}
+            placeholder={termuxConfig.isConnected ? "Command me..." : "Ask me..."}
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyDown={(e) => {
@@ -739,7 +791,7 @@ const App = () => {
       </div>
       
        <div className="mt-8 text-center">
-         <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Version 2.1.0 (Direct Result)</p>
+         <p className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Version 3.0.0 (Groq-OS)</p>
        </div>
     </div>
   );
